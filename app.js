@@ -2,7 +2,7 @@ const STORAGE_KEY = "portrait-practice-tracker-v1";
 const UI_PREFS_KEY = "portrait-practice-ui-v1";
 const DEFAULT_STAGES = ["Reference", "Block-in", "30 mins", "Final artwork"];
 const DEFAULT_OVERLAY = { x: 0, y: 0, width: 280, height: 350, rotate: 0, opacity: 85 };
-const DEFAULT_TRACE_COLOR = "#ffffff";
+const DEFAULT_TRACE_COLOR = "#00e676";
 
 const state = {
   artworks: [],
@@ -18,6 +18,8 @@ const state = {
   overlayHistory: [],
   overlayRedoHistory: [],
   overlayLocked: false,
+  overlayStageZoom: { scale: 1, x: 0, y: 0 },
+  defaultTraceColor: DEFAULT_TRACE_COLOR,
   traceColor: DEFAULT_TRACE_COLOR,
   overlay: { ...DEFAULT_OVERLAY },
 };
@@ -42,9 +44,11 @@ document.addEventListener("DOMContentLoaded", () => {
 function bindElements() {
   Object.assign(els, {
     form: document.querySelector("#artworkForm"),
+    topActions: document.querySelector(".top-actions"),
     formTitle: document.querySelector("#formTitle"),
     artworkDateInput: document.querySelector("#artworkDateInput"),
     newArtworkButton: document.querySelector("#newArtworkButton"),
+    appStatus: document.querySelector("#appStatus"),
     saveArtworkButton: document.querySelector("#saveArtworkButton"),
     saveStatus: document.querySelector("#saveStatus"),
     totalTimeDisplay: document.querySelector("#totalTimeDisplay"),
@@ -79,6 +83,8 @@ function bindElements() {
     ratingFilter: document.querySelector("#ratingFilter"),
     sortFilter: document.querySelector("#sortFilter"),
     searchFilter: document.querySelector("#searchFilter"),
+    toggleReviewSearchButton: document.querySelector("#toggleReviewSearchButton"),
+    reviewSearchPanel: document.querySelector("#reviewSearchPanel"),
     toggleProjectSearchButton: document.querySelector("#toggleProjectSearchButton"),
     projectSearch: document.querySelector("#projectSearch"),
     projectSearchPanel: document.querySelector("#projectSearchPanel"),
@@ -101,6 +107,7 @@ function bindElements() {
     importBackupInput: document.querySelector("#importBackupInput"),
     importModeSelect: document.querySelector("#importModeSelect"),
     backupStatus: document.querySelector("#backupStatus"),
+    lastExportedInfo: document.querySelector("#lastExportedInfo"),
     statsGrid: document.querySelector("#statsGrid"),
     statsInsight: document.querySelector("#statsInsight"),
     trendChart: document.querySelector("#trendChart"),
@@ -115,6 +122,7 @@ function bindElements() {
     tracePhotoLayer: document.querySelector("#tracePhotoLayer"),
     traceCanvas: document.querySelector("#traceCanvas"),
     overlayStage: document.querySelector("#overlayStage"),
+    overlayViewport: document.querySelector("#overlayViewport"),
     toggleOverlayFullscreenButton: document.querySelector("#toggleOverlayFullscreenButton"),
     exitOverlayFullscreenButton: document.querySelector("#exitOverlayFullscreenButton"),
     exportOverlayButton: document.querySelector("#exportOverlayButton"),
@@ -129,6 +137,8 @@ function bindElements() {
     traceColorInputs: document.querySelectorAll("input[name='traceColor']"),
     overlayOpacityInputs: document.querySelectorAll("input[name='overlayOpacity']"),
     textSizeSelect: document.querySelector("#textSizeSelect"),
+    themeSelect: document.querySelector("#themeSelect"),
+    defaultTraceColorInputs: document.querySelectorAll("input[name='defaultTraceColor']"),
   });
 }
 
@@ -144,8 +154,15 @@ function loadData() {
 function loadUiPrefs() {
   const saved = localStorage.getItem(UI_PREFS_KEY);
   const prefs = saved ? JSON.parse(saved) : {};
+  state.defaultTraceColor = prefs.defaultTraceColor || DEFAULT_TRACE_COLOR;
+  state.traceColor = state.defaultTraceColor;
   applyTextSize(prefs.textSize || "default");
   if (els.textSizeSelect) els.textSizeSelect.value = prefs.textSize || "default";
+  applyTheme(prefs.theme || "dark");
+  if (els.themeSelect) els.themeSelect.value = prefs.theme || "dark";
+  syncDefaultTraceColorControls();
+  syncTraceColorControls();
+  renderLastExported(prefs.lastExportedAt || "");
   state.overlayLocked = Boolean(prefs.overlayLocked);
   if (els.overlayLockToggle) els.overlayLockToggle.checked = state.overlayLocked;
   const overlayView = document.querySelector("#view-overlay");
@@ -153,10 +170,19 @@ function loadUiPrefs() {
 }
 
 function saveUiPrefs() {
+  const previous = readUiPrefs();
   localStorage.setItem(UI_PREFS_KEY, JSON.stringify({
-    textSize: els.textSizeSelect.value,
+    ...previous,
+    textSize: els.textSizeSelect ? els.textSizeSelect.value : previous.textSize || "default",
+    theme: els.themeSelect ? els.themeSelect.value : previous.theme || "dark",
+    defaultTraceColor: state.defaultTraceColor,
     overlayLocked: state.overlayLocked,
   }));
+}
+
+function readUiPrefs() {
+  const saved = localStorage.getItem(UI_PREFS_KEY);
+  return saved ? JSON.parse(saved) : {};
 }
 
 function saveData() {
@@ -173,6 +199,7 @@ function setupTabs() {
       const view = document.querySelector(`#view-${tab.dataset.view}`);
       if (!view) return;
       view.classList.add("active");
+      if (els.topActions) els.topActions.classList.toggle("hidden", tab.dataset.view !== "projects");
       if (tab.dataset.view === "overlay") renderOverlaySelectors();
       if (tab.dataset.view === "projects") renderProjects();
       if (tab.dataset.view === "review") renderReview();
@@ -191,6 +218,22 @@ function setupForm() {
   els.textSizeSelect.addEventListener("change", () => {
     applyTextSize(els.textSizeSelect.value);
     saveUiPrefs();
+  });
+  if (els.themeSelect) {
+    els.themeSelect.addEventListener("change", () => {
+      applyTheme(els.themeSelect.value);
+      saveUiPrefs();
+    });
+  }
+  toArray(els.defaultTraceColorInputs).forEach((input) => {
+    input.addEventListener("change", () => {
+      state.defaultTraceColor = input.value;
+      state.traceColor = input.value;
+      syncTraceColorControls();
+      renderReferenceTrace();
+      saveUiPrefs();
+      setAppStatus("Default overlay color updated.");
+    });
   });
 
   els.addStageButton.addEventListener("click", () => {
@@ -295,6 +338,7 @@ function addSessionToArtwork(artwork, minutesValue, dateValue) {
   artwork.updatedAt = new Date().toISOString();
   saveData();
   renderAll();
+  setAppStatus(`Added ${minutes} minutes to ${artwork.title || "Untitled artwork"}.`);
 }
 
 function setupCustomSelect(select, wrap) {
@@ -311,6 +355,14 @@ function setupFilters() {
   [els.ratingFilter, els.sortFilter, els.searchFilter].forEach((control) => {
     control.addEventListener("input", renderReview);
   });
+  if (els.toggleReviewSearchButton) {
+    els.toggleReviewSearchButton.addEventListener("click", () => {
+      if (!els.reviewSearchPanel) return;
+      els.reviewSearchPanel.classList.toggle("hidden");
+      els.toggleReviewSearchButton.setAttribute("aria-expanded", String(!els.reviewSearchPanel.classList.contains("hidden")));
+      if (!els.reviewSearchPanel.classList.contains("hidden")) els.searchFilter.focus();
+    });
+  }
   els.projectSearch.addEventListener("input", renderProjects);
 
   els.reviewGrid.addEventListener("click", (event) => {
@@ -454,6 +506,9 @@ function setupOverlay() {
   toArray(els.traceColorInputs).forEach((input) => {
     input.addEventListener("change", () => {
       state.traceColor = input.value;
+      state.defaultTraceColor = input.value;
+      syncDefaultTraceColorControls();
+      saveUiPrefs();
       renderReferenceTrace();
     });
   });
@@ -505,6 +560,36 @@ function setupOverlay() {
       pointers.delete(event.pointerId);
       saveCurrentOverlayPosition();
       gesture = pointers.size ? startOverlayGesture(event, pointers) : null;
+    });
+  });
+
+  setupLockedOverlayZoom();
+}
+
+function setupLockedOverlayZoom() {
+  const pointers = new Map();
+  let gesture = null;
+
+  els.overlayStage.addEventListener("pointerdown", (event) => {
+    if (!state.overlayLocked) return;
+    if (event.target.closest(".overlay-stage-toolbar")) return;
+    event.preventDefault();
+    pointers.set(event.pointerId, pointerPoint(event));
+    gesture = startStageZoomGesture(pointers);
+    els.overlayStage.setPointerCapture(event.pointerId);
+  });
+
+  els.overlayStage.addEventListener("pointermove", (event) => {
+    if (!state.overlayLocked || !pointers.has(event.pointerId) || !gesture) return;
+    event.preventDefault();
+    pointers.set(event.pointerId, pointerPoint(event));
+    updateStageZoomGesture(pointers, gesture);
+  });
+
+  ["pointerup", "pointercancel", "lostpointercapture"].forEach((eventName) => {
+    els.overlayStage.addEventListener(eventName, (event) => {
+      pointers.delete(event.pointerId);
+      gesture = pointers.size ? startStageZoomGesture(pointers) : null;
     });
   });
 }
@@ -801,7 +886,7 @@ function projectCard(artwork) {
   const safeId = escapeHtml(artwork.id);
   return `
     <article class="project-card" data-project-card-id="${safeId}">
-      <div class="project-open">
+      <button class="project-open" type="button" data-update-artwork-id="${safeId}" aria-label="Update ${escapeHtml(artwork.title || "Untitled artwork")}">
         ${thumb ? `<img src="${thumb.dataUrl}" alt="">` : `<span class="project-placeholder">No image</span>`}
         <div>
           <strong>${escapeHtml(artwork.title || "Untitled artwork")}</strong>
@@ -809,7 +894,7 @@ function projectCard(artwork) {
           <span>${artwork.minutes} min · ${artwork.images.filter((image) => image.dataUrl).length} images</span>
           <span>${lastSession ? `Last session ${escapeHtml(lastSession.date)} · ${lastSession.minutes} min` : "No sessions yet"}</span>
         </div>
-      </div>
+      </button>
       <div class="project-quick-log">
         <label>
           Date
@@ -934,7 +1019,12 @@ function exportBackup() {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+  const prefs = readUiPrefs();
+  prefs.lastExportedAt = backup.exportedAt;
+  localStorage.setItem(UI_PREFS_KEY, JSON.stringify(prefs));
+  renderLastExported(backup.exportedAt);
   els.backupStatus.textContent = `Exported ${state.artworks.length} artworks.`;
+  setAppStatus(`Exported ${state.artworks.length} artworks.`);
 }
 
 async function importBackup(event) {
@@ -957,8 +1047,10 @@ async function importBackup(event) {
     renderAll();
     activateTab("projects");
     els.backupStatus.textContent = `Imported: ${summary.added} added, ${summary.updated} updated, ${summary.skipped} skipped.`;
+    setAppStatus(`Imported ${summary.added} added, ${summary.updated} updated, ${summary.skipped} skipped.`);
   } catch (error) {
     els.backupStatus.textContent = `Import failed: ${error.message}`;
+    setAppStatus(`Import failed: ${error.message}`);
   } finally {
     event.target.value = "";
   }
@@ -1077,15 +1169,50 @@ function renderHeatmap() {
 
   const today = new Date();
   const days = [];
-  for (let i = 34; i >= 0; i -= 1) {
+  for (let i = 13; i >= 0; i -= 1) {
     const date = new Date(today);
     date.setDate(today.getDate() - i);
     const key = date.toISOString().slice(0, 10);
     const minutes = minutesByDay.get(key) || 0;
-    const level = minutes >= 90 ? 3 : minutes >= 30 ? 2 : minutes > 0 ? 1 : 0;
-    days.push(`<span class="day level-${level}" title="${key}: ${minutes} minutes">${minutes}</span>`);
+    days.push({ key, label: `${date.getMonth() + 1}/${date.getDate()}`, minutes });
   }
-  els.heatmap.innerHTML = days.join("");
+  const maxMinutes = Math.max(30, ...days.map((day) => day.minutes));
+  const width = 360;
+  const height = 210;
+  const pad = { top: 18, right: 14, bottom: 42, left: 38 };
+  const plotWidth = width - pad.left - pad.right;
+  const plotHeight = height - pad.top - pad.bottom;
+  const barGap = 5;
+  const barWidth = (plotWidth - barGap * (days.length - 1)) / days.length;
+  const yTicks = [0, Math.round(maxMinutes / 2), maxMinutes];
+  const bars = days.map((day, index) => {
+    const barHeight = day.minutes ? Math.max(4, (day.minutes / maxMinutes) * plotHeight) : 1;
+    const x = pad.left + index * (barWidth + barGap);
+    const y = pad.top + plotHeight - barHeight;
+    return `
+      <g>
+        <rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barHeight.toFixed(1)}" rx="4" />
+        <title>${day.key}: ${day.minutes} minutes</title>
+        ${index % 3 === 0 || index === days.length - 1 ? `<text class="x-label" x="${(x + barWidth / 2).toFixed(1)}" y="${height - 13}" text-anchor="middle">${escapeHtml(day.label)}</text>` : ""}
+      </g>
+    `;
+  }).join("");
+  const ticks = yTicks.map((tick) => {
+    const y = pad.top + plotHeight - (tick / maxMinutes) * plotHeight;
+    return `
+      <g>
+        <line x1="${pad.left}" y1="${y.toFixed(1)}" x2="${width - pad.right}" y2="${y.toFixed(1)}" />
+        <text x="${pad.left - 8}" y="${(y + 4).toFixed(1)}" text-anchor="end">${tick}</text>
+      </g>
+    `;
+  }).join("");
+  els.heatmap.innerHTML = `
+    <svg class="minutes-day-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Minutes practiced per day over the last 14 days">
+      <g class="y-grid">${ticks}</g>
+      <g class="bars">${bars}</g>
+      <text class="axis-label" x="12" y="${pad.top + 10}" transform="rotate(-90 12 ${pad.top + 10})">minutes</text>
+    </svg>
+  `;
 }
 
 function renderTrend() {
@@ -1231,6 +1358,7 @@ function syncOverlayControls() {
   toArray(els.overlayOpacityInputs).forEach((input) => {
     input.checked = Number(input.value) === state.overlay.opacity;
   });
+  syncTraceColorControls();
   if (els.undoOverlayButton) els.undoOverlayButton.disabled = !state.overlayHistory.length;
   if (els.redoOverlayButton) els.redoOverlayButton.disabled = !state.overlayRedoHistory.length;
 }
@@ -1352,13 +1480,58 @@ function applyTextSize(size) {
   document.documentElement.setAttribute("data-text-size", next);
 }
 
+function applyTheme(theme) {
+  const next = theme === "light" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  const themeColor = next === "light" ? "#f8fafc" : "#0c111b";
+  const meta = document.querySelector("meta[name='theme-color']");
+  if (meta) meta.setAttribute("content", themeColor);
+}
+
 function announceSave(message) {
-  if (!els.saveStatus) return;
-  els.saveStatus.textContent = message;
+  if (els.saveStatus) els.saveStatus.textContent = message;
+  setAppStatus(message);
   clearTimeout(announceSave.timer);
   announceSave.timer = window.setTimeout(() => {
-    if (els.saveStatus.textContent === message) els.saveStatus.textContent = "";
+    if (els.saveStatus && els.saveStatus.textContent === message) els.saveStatus.textContent = "";
   }, 2200);
+}
+
+function setAppStatus(message) {
+  if (!els.appStatus) return;
+  els.appStatus.textContent = message;
+  els.appStatus.classList.toggle("visible", Boolean(message));
+  clearTimeout(setAppStatus.timer);
+  setAppStatus.timer = window.setTimeout(() => {
+    if (els.appStatus.textContent === message) {
+      els.appStatus.textContent = "";
+      els.appStatus.classList.remove("visible");
+    }
+  }, 2600);
+}
+
+function syncTraceColorControls() {
+  toArray(els.traceColorInputs || []).forEach((input) => {
+    input.checked = input.value.toLowerCase() === String(state.traceColor).toLowerCase();
+  });
+}
+
+function syncDefaultTraceColorControls() {
+  toArray(els.defaultTraceColorInputs || []).forEach((input) => {
+    input.checked = input.value.toLowerCase() === String(state.defaultTraceColor).toLowerCase();
+  });
+}
+
+function renderLastExported(value) {
+  if (!els.lastExportedInfo) return;
+  if (!value) {
+    els.lastExportedInfo.textContent = "Last exported: never";
+    return;
+  }
+  const date = new Date(value);
+  els.lastExportedInfo.textContent = Number.isNaN(date.getTime())
+    ? "Last exported: unknown"
+    : `Last exported: ${date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`;
 }
 
 function overlayToBaseSpace() {
@@ -1567,6 +1740,10 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, Math.round(value)));
 }
 
+function clampDecimal(value, min, max) {
+  return Math.min(max, Math.max(min, Number(value.toFixed(3))));
+}
+
 function pointerPoint(event) {
   return { id: event.pointerId, x: event.clientX, y: event.clientY };
 }
@@ -1623,6 +1800,34 @@ function updateOverlayFromPinch(points, gesture) {
   state.overlay.rotate = clamp(gesture.overlay.rotate + angleDelta, -180, 180);
   state.overlay.x = gesture.overlay.x + (center.x - gesture.center.x);
   state.overlay.y = gesture.overlay.y + (center.y - gesture.center.y);
+}
+
+function startStageZoomGesture(pointers) {
+  const points = objectValuesFromMap(pointers);
+  return {
+    points,
+    center: pointsCenter(points),
+    distance: pointsDistance(points),
+    zoom: { ...state.overlayStageZoom },
+  };
+}
+
+function updateStageZoomGesture(pointers, gesture) {
+  const points = objectValuesFromMap(pointers);
+  const center = pointsCenter(points);
+  if (points.length >= 2 && gesture.points.length >= 2) {
+    const scale = pointsDistance(points) / Math.max(1, gesture.distance);
+    state.overlayStageZoom.scale = clampDecimal(gesture.zoom.scale * scale, 1, 4);
+  }
+  state.overlayStageZoom.x = gesture.zoom.x + (center.x - gesture.center.x);
+  state.overlayStageZoom.y = gesture.zoom.y + (center.y - gesture.center.y);
+  applyOverlayStageZoom();
+}
+
+function applyOverlayStageZoom() {
+  if (!els.overlayViewport) return;
+  const zoom = state.overlayStageZoom;
+  els.overlayViewport.style.transform = `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.scale})`;
 }
 
 function resizeOverlayFromCorner(action, start, dx, dy) {

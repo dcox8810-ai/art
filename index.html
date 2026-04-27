@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-title" content="Studio Log" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=12" />
+    <link rel="stylesheet" href="styles.css?v=13" />
   </head>
   <body>
     <main class="app-shell">
@@ -17,7 +17,12 @@
         <div>
           <h1>Studio Log</h1>
         </div>
+        <div class="top-actions" aria-label="Project actions">
+          <button class="icon-button project-icon-button" type="button" id="toggleProjectSearchButton" aria-label="Search projects" aria-expanded="false">⌕</button>
+          <button class="icon-button project-icon-button" type="button" id="newProjectButton" aria-label="New artwork">+</button>
+        </div>
       </header>
+      <p id="appStatus" class="app-status" aria-live="polite"></p>
 
       <section class="view" id="view-log" aria-labelledby="tab-log">
         <form id="artworkForm" class="panel">
@@ -36,8 +41,11 @@
 
           <section class="time-log">
             <h2>Time Sessions</h2>
-            <input id="sessionDateInput" type="hidden" />
-            <div class="form-row">
+            <div class="form-row two">
+              <label>
+                Date
+                <input id="sessionDateInput" type="date" />
+              </label>
               <label>
                 Add minutes
                 <input id="sessionMinutesInput" type="number" min="0" step="5" placeholder="30" />
@@ -76,6 +84,7 @@
                 <option>Charcoal</option>
                 <option>Graphite</option>
                 <option>Pastel</option>
+                <option>Digital</option>
                 <option>Other</option>
               </select>
             </label>
@@ -87,6 +96,7 @@
                 <option>Watercolor paper</option>
                 <option>Canvas panel</option>
                 <option>Wood panel</option>
+                <option>Digital</option>
                 <option>Other</option>
               </select>
             </label>
@@ -152,38 +162,40 @@
 
       <section class="view" id="view-review" aria-labelledby="tab-review">
         <div class="filters panel">
-          <label>
-            Stage
-            <select id="stageFilter"></select>
-          </label>
-          <label>
-            Min rating
-            <select id="ratingFilter">
-              <option value="0">Any</option>
-              <option value="1">1+</option>
-              <option value="2">2+</option>
-              <option value="3">3+</option>
-              <option value="4">4+</option>
-              <option value="5">5</option>
-            </select>
-          </label>
-          <label>
-            Sort by
-            <select id="sortFilter">
-              <option value="date-desc">Newest</option>
-              <option value="date-asc">Oldest</option>
-              <option value="rating-desc">Rating high</option>
-              <option value="rating-asc">Rating low</option>
-              <option value="time-desc">Time spent high</option>
-              <option value="time-asc">Time spent low</option>
-              <option value="medium-asc">Medium A-Z</option>
-              <option value="subject-asc">Subject A-Z</option>
-            </select>
-          </label>
-          <label>
-            Search
+          <div class="filter-row">
+            <label>
+              <span>Stage</span>
+              <select id="stageFilter"></select>
+            </label>
+            <label>
+              <span>Rating</span>
+              <select id="ratingFilter">
+                <option value="0">Any</option>
+                <option value="1">1+</option>
+                <option value="2">2+</option>
+                <option value="3">3+</option>
+                <option value="4">4+</option>
+                <option value="5">5</option>
+              </select>
+            </label>
+            <label>
+              <span>Sort</span>
+              <select id="sortFilter">
+                <option value="date-desc">Newest</option>
+                <option value="date-asc">Oldest</option>
+                <option value="rating-desc">Rating high</option>
+                <option value="rating-asc">Rating low</option>
+                <option value="time-desc">Time spent high</option>
+                <option value="time-asc">Time spent low</option>
+                <option value="medium-asc">Medium A-Z</option>
+                <option value="subject-asc">Subject A-Z</option>
+              </select>
+            </label>
+            <button class="icon-button project-icon-button" type="button" id="toggleReviewSearchButton" aria-label="Search review images" aria-expanded="false">⌕</button>
+          </div>
+          <div id="reviewSearchPanel" class="project-search-panel hidden">
             <input id="searchFilter" placeholder="medium, surface, subject..." />
-          </label>
+          </div>
         </div>
         <div id="reviewGrid" class="review-grid" aria-live="polite"></div>
         <section id="reviewViewer" class="viewer panel hidden" aria-live="polite">
@@ -209,14 +221,8 @@
       </section>
 
       <section class="view active" id="view-projects" aria-labelledby="tab-projects">
-        <div class="panel project-tools">
-          <div class="project-toolbar">
-            <button class="icon-button project-icon-button" type="button" id="toggleProjectSearchButton" aria-label="Search projects" aria-expanded="false">⌕</button>
-            <button class="icon-button project-icon-button" type="button" id="newProjectButton" aria-label="New artwork">+</button>
-          </div>
-          <div id="projectSearchPanel" class="project-search-panel hidden">
-            <input id="projectSearch" placeholder="title, medium, subject..." />
-          </div>
+        <div id="projectSearchPanel" class="project-search-panel hidden">
+          <input id="projectSearch" placeholder="title, medium, subject..." />
         </div>
         <section class="panel project-detail hidden" id="projectDetail" aria-live="polite">
           <div class="project-detail-head">
@@ -275,7 +281,7 @@
           </div>
         </section>
         <section class="panel">
-          <h2>Practice Days</h2>
+          <h2>Minutes / Day</h2>
           <div id="calendarHeatmap" class="heatmap"></div>
         </section>
         <section class="panel">
@@ -299,6 +305,22 @@
               <option value="large">Large</option>
             </select>
           </label>
+          <label class="text-size-control">
+            Theme
+            <select id="themeSelect">
+              <option value="dark" selected>Dark</option>
+              <option value="light">Light</option>
+            </select>
+          </label>
+          <fieldset class="color-field settings-color-field">
+            <legend>Default overlay color</legend>
+            <label style="--swatch:#ff3b30"><input type="radio" name="defaultTraceColor" value="#ff3b30" /><span>Red</span></label>
+            <label style="--swatch:#020617"><input type="radio" name="defaultTraceColor" value="#020617" /><span>Black</span></label>
+            <label style="--swatch:#ffffff"><input type="radio" name="defaultTraceColor" value="#ffffff" /><span>White</span></label>
+            <label style="--swatch:#00e676"><input type="radio" name="defaultTraceColor" value="#00e676" checked /><span>Green</span></label>
+            <label style="--swatch:#ffd60a"><input type="radio" name="defaultTraceColor" value="#ffd60a" /><span>Gold</span></label>
+            <label style="--swatch:#3b82ff"><input type="radio" name="defaultTraceColor" value="#3b82ff" /><span>Blue</span></label>
+          </fieldset>
         </section>
         <section class="panel settings-panel">
           <h2>Backup & Import</h2>
@@ -313,9 +335,10 @@
             Import mode
             <select id="importModeSelect">
               <option value="add-only">Add new only</option>
-              <option value="merge-update">Add new and update matches</option>
+              <option value="merge-update" selected>Add new and update matches</option>
             </select>
           </label>
+          <p class="helper" id="lastExportedInfo">Last exported: never</p>
           <p class="helper" id="backupStatus">Imports never delete existing artworks.</p>
         </section>
       </section>
@@ -328,33 +351,23 @@
             <button class="secondary compact" type="button" id="redoOverlayButton">Redo</button>
             <button class="secondary compact" type="button" id="closeOverlayButton">Done</button>
           </div>
-          <img id="referenceLayer" alt="Reference image" />
-          <img id="artworkBaseLayer" alt="Artwork image" />
-          <div id="compareFrame" class="compare-frame">
-            <img id="tracePhotoLayer" alt="Reference photo overlay" />
-            <canvas id="traceCanvas" aria-label="Reference trace overlay"></canvas>
-            <button class="overlay-handle move-handle" type="button" data-action="move" aria-label="Move overlay"></button>
-            <button class="overlay-handle corner-handle corner-nw" type="button" data-action="resize-nw" aria-label="Resize overlay from top left"></button>
-            <button class="overlay-handle corner-handle corner-ne" type="button" data-action="resize-ne" aria-label="Resize overlay from top right"></button>
-            <button class="overlay-handle corner-handle corner-sw" type="button" data-action="resize-sw" aria-label="Resize overlay from bottom left"></button>
-            <button class="overlay-handle corner-handle corner-se" type="button" data-action="resize-se" aria-label="Resize overlay from bottom right"></button>
-            <button class="overlay-handle rotate-handle rotate-top" type="button" data-action="rotate" aria-label="Rotate overlay from top"></button>
-            <button class="overlay-handle rotate-handle rotate-bottom" type="button" data-action="rotate" aria-label="Rotate overlay from bottom"></button>
+          <div id="overlayViewport" class="overlay-viewport">
+            <img id="referenceLayer" alt="Reference image" />
+            <img id="artworkBaseLayer" alt="Artwork image" />
+            <div id="compareFrame" class="compare-frame">
+              <img id="tracePhotoLayer" alt="Reference photo overlay" />
+              <canvas id="traceCanvas" aria-label="Reference trace overlay"></canvas>
+              <button class="overlay-handle move-handle" type="button" data-action="move" aria-label="Move overlay"></button>
+              <button class="overlay-handle corner-handle corner-nw" type="button" data-action="resize-nw" aria-label="Resize overlay from top left"></button>
+              <button class="overlay-handle corner-handle corner-ne" type="button" data-action="resize-ne" aria-label="Resize overlay from top right"></button>
+              <button class="overlay-handle corner-handle corner-sw" type="button" data-action="resize-sw" aria-label="Resize overlay from bottom left"></button>
+              <button class="overlay-handle corner-handle corner-se" type="button" data-action="resize-se" aria-label="Resize overlay from bottom right"></button>
+              <button class="overlay-handle rotate-handle rotate-top" type="button" data-action="rotate" aria-label="Rotate overlay from top"></button>
+              <button class="overlay-handle rotate-handle rotate-bottom" type="button" data-action="rotate" aria-label="Rotate overlay from bottom"></button>
+            </div>
           </div>
         </section>
 
-        <div class="panel overlay-picker">
-          <button class="primary slim" type="button" id="toggleOverlayFullscreenButton">Full screen overlay</button>
-          <button class="secondary slim" type="button" id="exportOverlayButton">Export image</button>
-          <label>
-            Artwork
-            <select id="overlayArtwork"></select>
-          </label>
-          <label>
-            Compare image
-            <select id="overlayImage"></select>
-          </label>
-        </div>
         <div class="fullscreen-actions" aria-label="Overlay actions">
           <button type="button" id="exportOverlayFullscreenButton" aria-label="Export overlay image">↓</button>
           <button type="button" id="exitOverlayFullscreenButton" aria-label="Exit full screen">×</button>
@@ -367,8 +380,8 @@
             <legend>Trace color</legend>
             <label style="--swatch:#ff3b30"><input type="radio" name="traceColor" value="#ff3b30" /><span>Red</span></label>
             <label style="--swatch:#020617"><input type="radio" name="traceColor" value="#020617" /><span>Black</span></label>
-            <label style="--swatch:#ffffff"><input type="radio" name="traceColor" value="#ffffff" checked /><span>White</span></label>
-            <label style="--swatch:#00e676"><input type="radio" name="traceColor" value="#00e676" /><span>Green</span></label>
+            <label style="--swatch:#ffffff"><input type="radio" name="traceColor" value="#ffffff" /><span>White</span></label>
+            <label style="--swatch:#00e676"><input type="radio" name="traceColor" value="#00e676" checked /><span>Green</span></label>
             <label style="--swatch:#ffd60a"><input type="radio" name="traceColor" value="#ffd60a" /><span>Gold</span></label>
             <label style="--swatch:#3b82ff"><input type="radio" name="traceColor" value="#3b82ff" /><span>Blue</span></label>
           </fieldset>
@@ -378,10 +391,23 @@
             <label><input type="radio" name="overlayOpacity" value="35" /> 35%</label>
             <label><input type="radio" name="overlayOpacity" value="60" /> 60%</label>
             <label><input type="radio" name="overlayOpacity" value="85" checked /> 85%</label>
+            <label><input type="radio" name="overlayOpacity" value="100" /> 100%</label>
           </fieldset>
           <div class="overlay-actions-row">
             <button class="secondary" type="button" id="resetOverlayButton">Reset overlay</button>
           </div>
+        </div>
+        <div class="panel overlay-picker">
+          <button class="primary slim" type="button" id="toggleOverlayFullscreenButton">Full screen overlay</button>
+          <button class="secondary slim" type="button" id="exportOverlayButton">Export image</button>
+          <label>
+            Artwork
+            <select id="overlayArtwork"></select>
+          </label>
+          <label>
+            Compare image
+            <select id="overlayImage"></select>
+          </label>
         </div>
       </section>
 
@@ -421,7 +447,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=12"></script>
+    <script src="app.js?v=13"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");
