@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-title" content="Studio Log" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=10" />
+    <link rel="stylesheet" href="styles.css?v=11" />
   </head>
   <body>
     <main class="app-shell">
@@ -45,11 +45,8 @@
 
           <section class="time-log">
             <h2>Time Sessions</h2>
-            <div class="form-row two">
-              <label>
-                Session date
-                <input id="sessionDateInput" type="date" />
-              </label>
+            <input id="sessionDateInput" type="hidden" />
+            <div class="form-row">
               <label>
                 Add minutes
                 <input id="sessionMinutesInput" type="number" min="0" step="5" placeholder="30" />
@@ -203,6 +200,7 @@
             <button class="secondary compact" type="button" id="prevImageButton">Previous</button>
             <button class="secondary compact" type="button" id="closeViewerButton">Grid</button>
             <button class="secondary compact" type="button" id="nextImageButton">Next</button>
+            <button class="secondary compact" type="button" id="toggleReviewFullscreenButton">Full screen</button>
           </div>
           <div class="viewer-stage" id="viewerStage">
             <img id="viewerImage" alt="" />
@@ -219,11 +217,13 @@
 
       <section class="view active" id="view-projects" aria-labelledby="tab-projects">
         <div class="panel project-tools">
-          <label>
-            Find project
+          <div class="project-toolbar">
+            <button class="icon-button project-icon-button" type="button" id="toggleProjectSearchButton" aria-label="Search projects" aria-expanded="false">⌕</button>
+            <button class="icon-button project-icon-button" type="button" id="newProjectButton" aria-label="New artwork">+</button>
+          </div>
+          <div id="projectSearchPanel" class="project-search-panel hidden">
             <input id="projectSearch" placeholder="title, medium, subject..." />
-          </label>
-          <button class="primary slim" type="button" id="newProjectButton">New artwork</button>
+          </div>
         </div>
         <details class="backup-tools">
           <summary>Settings & backup</summary>
@@ -256,6 +256,16 @@
             <button class="secondary slim" type="button" id="projectDetailOverlayButton">Open overlay</button>
             <button class="secondary slim" type="button" id="projectDetailDuplicateButton">Duplicate</button>
             <button class="secondary slim" type="button" id="projectDetailDeleteButton">Delete</button>
+          </div>
+          <div class="project-detail-quick">
+            <label>
+              Quick time
+              <div class="quick-session-row">
+                <input id="projectQuickMinutesInput" type="number" min="0" step="5" placeholder="30" />
+                <button class="secondary compact" type="button" id="projectQuickAddButton">Add time</button>
+              </div>
+            </label>
+            <p class="helper">Logs today's date automatically.</p>
           </div>
           <div class="project-detail-grid">
             <div>
@@ -305,6 +315,12 @@
 
       <section class="view" id="view-overlay" aria-labelledby="tab-overlay">
         <section class="overlay-stage" id="overlayStage">
+          <div class="overlay-stage-toolbar">
+            <label class="toggle-row overlay-lock-inline"><input id="overlayLockToggle" type="checkbox" /> Lock overlay</label>
+            <button class="secondary compact" type="button" id="undoOverlayButton">Undo</button>
+            <button class="secondary compact" type="button" id="redoOverlayButton">Redo</button>
+            <button class="secondary compact" type="button" id="closeOverlayButton">Done</button>
+          </div>
           <img id="referenceLayer" alt="Reference image" />
           <img id="artworkBaseLayer" alt="Artwork image" />
           <div id="compareFrame" class="compare-frame">
@@ -323,7 +339,6 @@
         <div class="panel overlay-picker">
           <button class="primary slim" type="button" id="toggleOverlayFullscreenButton">Full screen overlay</button>
           <button class="secondary slim" type="button" id="exportOverlayButton">Export image</button>
-          <button class="secondary slim" type="button" id="undoOverlayButton">Undo</button>
           <label>
             Artwork
             <select id="overlayArtwork"></select>
@@ -341,7 +356,6 @@
         <div class="panel controls">
           <label class="toggle-row"><input id="traceToggle" type="checkbox" checked /> Trace reference lines</label>
           <label>Trace detail <input id="traceThresholdControl" type="range" min="15" max="90" value="38" /></label>
-          <label class="toggle-row"><input id="overlayLockToggle" type="checkbox" /> Lock overlay</label>
           <fieldset class="color-field">
             <legend>Trace color</legend>
             <label style="--swatch:#c4514a"><input type="radio" name="traceColor" value="#c4514a" /><span>Red</span></label>
@@ -366,10 +380,10 @@
 
       <nav class="tabbar" aria-label="Primary">
         <button class="tab active" id="tab-projects" data-view="projects">Projects</button>
-        <button class="tab" id="tab-log" data-view="log">Log</button>
+        <button class="tab hidden" id="tab-log" data-view="log">Log</button>
         <button class="tab" id="tab-review" data-view="review">Review</button>
         <button class="tab" id="tab-stats" data-view="stats">Stats</button>
-        <button class="tab" id="tab-overlay" data-view="overlay">Overlay</button>
+        <button class="tab hidden" id="tab-overlay" data-view="overlay">Overlay</button>
       </nav>
     </main>
 
@@ -399,7 +413,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=10"></script>
+    <script src="app.js?v=11"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");

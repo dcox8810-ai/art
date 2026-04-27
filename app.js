@@ -14,7 +14,9 @@ const state = {
   reviewItems: [],
   reviewIndex: 0,
   reviewZoom: { scale: 1, x: 0, y: 0 },
+  reviewFullscreen: false,
   overlayHistory: [],
+  overlayRedoHistory: [],
   overlayLocked: false,
   traceColor: DEFAULT_TRACE_COLOR,
   overlay: { ...DEFAULT_OVERLAY },
@@ -62,6 +64,7 @@ function bindElements() {
     customSizeWrap: document.querySelector("#customSizeWrap"),
     customSubjectWrap: document.querySelector("#customSubjectWrap"),
     reviewGrid: document.querySelector("#reviewGrid"),
+    reviewView: document.querySelector("#view-review"),
     reviewViewer: document.querySelector("#reviewViewer"),
     viewerStage: document.querySelector("#viewerStage"),
     viewerImage: document.querySelector("#viewerImage"),
@@ -70,12 +73,15 @@ function bindElements() {
     prevImageButton: document.querySelector("#prevImageButton"),
     nextImageButton: document.querySelector("#nextImageButton"),
     closeViewerButton: document.querySelector("#closeViewerButton"),
+    toggleReviewFullscreenButton: document.querySelector("#toggleReviewFullscreenButton"),
     editFromViewerButton: document.querySelector("#editFromViewerButton"),
     stageFilter: document.querySelector("#stageFilter"),
     ratingFilter: document.querySelector("#ratingFilter"),
     sortFilter: document.querySelector("#sortFilter"),
     searchFilter: document.querySelector("#searchFilter"),
+    toggleProjectSearchButton: document.querySelector("#toggleProjectSearchButton"),
     projectSearch: document.querySelector("#projectSearch"),
+    projectSearchPanel: document.querySelector("#projectSearchPanel"),
     projectList: document.querySelector("#projectList"),
     projectDetail: document.querySelector("#projectDetail"),
     projectDetailThumb: document.querySelector("#projectDetailThumb"),
@@ -88,6 +94,8 @@ function bindElements() {
     projectDetailOverlayButton: document.querySelector("#projectDetailOverlayButton"),
     projectDetailDuplicateButton: document.querySelector("#projectDetailDuplicateButton"),
     projectDetailDeleteButton: document.querySelector("#projectDetailDeleteButton"),
+    projectQuickMinutesInput: document.querySelector("#projectQuickMinutesInput"),
+    projectQuickAddButton: document.querySelector("#projectQuickAddButton"),
     newProjectButton: document.querySelector("#newProjectButton"),
     exportBackupButton: document.querySelector("#exportBackupButton"),
     importBackupInput: document.querySelector("#importBackupInput"),
@@ -112,7 +120,9 @@ function bindElements() {
     exportOverlayButton: document.querySelector("#exportOverlayButton"),
     exportOverlayFullscreenButton: document.querySelector("#exportOverlayFullscreenButton"),
     undoOverlayButton: document.querySelector("#undoOverlayButton"),
+    redoOverlayButton: document.querySelector("#redoOverlayButton"),
     resetOverlayButton: document.querySelector("#resetOverlayButton"),
+    closeOverlayButton: document.querySelector("#closeOverlayButton"),
     traceToggle: document.querySelector("#traceToggle"),
     traceThresholdControl: document.querySelector("#traceThresholdControl"),
     overlayLockToggle: document.querySelector("#overlayLockToggle"),
@@ -156,6 +166,8 @@ function saveData() {
 function setupTabs() {
   toArray(document.querySelectorAll(".tab")).forEach((tab) => {
     tab.addEventListener("click", () => {
+      if (state.reviewFullscreen) toggleReviewFullscreen();
+      if (document.querySelector("#view-overlay").classList.contains("overlay-fullscreen")) toggleOverlayFullscreen();
       toArray(document.querySelectorAll(".tab, .view")).forEach((node) => node.classList.remove("active"));
       tab.classList.add("active");
       const view = document.querySelector(`#view-${tab.dataset.view}`);
@@ -170,7 +182,7 @@ function setupTabs() {
 
 function setupForm() {
   els.artworkDateInput.value = new Date().toISOString().slice(0, 10);
-  els.sessionDateInput.valueAsDate = new Date();
+  els.sessionDateInput.value = new Date().toISOString().slice(0, 10);
   setupCustomSelect(els.mediumSelect, els.customMediumWrap);
   setupCustomSelect(els.surfaceSelect, els.customSurfaceWrap);
   setupCustomSelect(els.sizeSelect, els.customSizeWrap);
@@ -187,18 +199,7 @@ function setupForm() {
   });
 
   els.addSessionButton.addEventListener("click", () => {
-    const minutes = Number(els.sessionMinutesInput.value);
-    if (!minutes || minutes < 0) return;
-    state.draftSessions.push({
-      id: createId(),
-      date: els.sessionDateInput.value || new Date().toISOString().slice(0, 10),
-      minutes,
-    });
-    els.sessionMinutesInput.value = "";
-    persistEditingArtwork();
-    renderSessions();
-    renderStats();
-    renderReview();
+    addDraftSession(els.sessionMinutesInput.value, els.sessionDateInput.value);
   });
 
   els.newArtworkButton.addEventListener("click", resetForm);
@@ -206,6 +207,14 @@ function setupForm() {
     resetForm();
     activateTab("log");
   });
+  if (els.toggleProjectSearchButton) {
+    els.toggleProjectSearchButton.addEventListener("click", () => {
+      if (!els.projectSearchPanel) return;
+      els.projectSearchPanel.classList.toggle("hidden");
+      els.toggleProjectSearchButton.setAttribute("aria-expanded", String(!els.projectSearchPanel.classList.contains("hidden")));
+      if (!els.projectSearchPanel.classList.contains("hidden")) els.projectSearch.focus();
+    });
+  }
   els.exportBackupButton.addEventListener("click", exportBackup);
   els.importBackupInput.addEventListener("change", importBackup);
 
@@ -258,6 +267,36 @@ function setupForm() {
   renderSessions();
 }
 
+function addDraftSession(minutesValue, dateValue) {
+  const minutes = Number(minutesValue);
+  if (!minutes || minutes < 0) return;
+  state.draftSessions.push({
+    id: createId(),
+    date: dateValue || new Date().toISOString().slice(0, 10),
+    minutes,
+  });
+  if (els.sessionMinutesInput) els.sessionMinutesInput.value = "";
+  persistEditingArtwork();
+  renderSessions();
+  renderStats();
+  renderReview();
+}
+
+function addSessionToArtwork(artwork, minutesValue, dateValue) {
+  const minutes = Number(minutesValue);
+  if (!artwork || !minutes || minutes < 0) return;
+  if (!Array.isArray(artwork.sessions)) artwork.sessions = [];
+  artwork.sessions.push({
+    id: createId(),
+    date: dateValue || new Date().toISOString().slice(0, 10),
+    minutes,
+  });
+  artwork.minutes = totalMinutes(artwork.sessions);
+  artwork.updatedAt = new Date().toISOString();
+  saveData();
+  renderAll();
+}
+
 function setupCustomSelect(select, wrap) {
   select.addEventListener("change", () => {
     wrap.classList.toggle("hidden", select.value !== "Other");
@@ -296,6 +335,15 @@ function setupFilters() {
     if (!card) return;
     selectProject(card.dataset.artworkId);
   });
+  if (els.projectQuickAddButton) {
+    els.projectQuickAddButton.addEventListener("click", () => {
+      const artwork = currentSelectedProject();
+      if (!artwork) return;
+      const currentDate = new Date().toISOString().slice(0, 10);
+      addSessionToArtwork(artwork, els.projectQuickMinutesInput.value, currentDate);
+      if (els.projectQuickMinutesInput) els.projectQuickMinutesInput.value = "";
+    });
+  }
 
   els.projectDetailUpdateButton.addEventListener("click", () => {
     const artwork = currentSelectedProject();
@@ -334,9 +382,13 @@ function setupFilters() {
   els.prevImageButton.addEventListener("click", () => stepReview(-1));
   els.nextImageButton.addEventListener("click", () => stepReview(1));
   els.closeViewerButton.addEventListener("click", () => {
+    if (state.reviewFullscreen) toggleReviewFullscreen();
     els.reviewViewer.classList.add("hidden");
     els.reviewGrid.classList.remove("hidden");
   });
+  if (els.toggleReviewFullscreenButton) {
+    els.toggleReviewFullscreenButton.addEventListener("click", toggleReviewFullscreen);
+  }
   els.editFromViewerButton.addEventListener("click", () => {
     const item = state.reviewItems[state.reviewIndex];
     if (item) loadArtworkForEditing(item.artwork.id);
@@ -353,6 +405,14 @@ function setupOverlay() {
   els.exportOverlayButton.addEventListener("click", exportOverlayImage);
   els.exportOverlayFullscreenButton.addEventListener("click", exportOverlayImage);
   els.undoOverlayButton.addEventListener("click", undoOverlay);
+  if (els.redoOverlayButton) els.redoOverlayButton.addEventListener("click", redoOverlay);
+  if (els.closeOverlayButton) {
+    els.closeOverlayButton.addEventListener("click", () => {
+      if (document.querySelector("#view-overlay").classList.contains("overlay-fullscreen")) toggleOverlayFullscreen();
+      saveCurrentOverlayPosition();
+      activateTab("projects");
+    });
+  }
   els.overlayArtwork.addEventListener("change", () => {
     renderOverlayImageOptions();
     renderOverlayImages();
@@ -367,7 +427,7 @@ function setupOverlay() {
   els.traceToggle.addEventListener("change", applyOverlayMode);
   els.traceThresholdControl.addEventListener("input", renderReferenceTrace);
   if (els.overlayLockToggle) {
-    els.overlayLockToggle.addEventListener("change", () => {
+  els.overlayLockToggle.addEventListener("change", () => {
       state.overlayLocked = els.overlayLockToggle.checked;
       document.querySelector("#view-overlay").classList.toggle("overlay-locked", state.overlayLocked);
       saveUiPrefs();
@@ -381,6 +441,7 @@ function setupOverlay() {
   });
   toArray(els.overlayOpacityInputs).forEach((input) => {
     input.addEventListener("change", () => {
+      clearOverlayRedoHistory();
       state.overlay.opacity = Number(input.value);
       applyOverlayTransform();
       saveCurrentOverlayPosition();
@@ -394,6 +455,7 @@ function setupOverlay() {
 
   els.resetOverlayButton.addEventListener("click", () => {
     pushOverlayHistory();
+    clearOverlayRedoHistory();
     state.overlay = { ...DEFAULT_OVERLAY };
     syncOverlayControls();
     clampOverlayToStage();
@@ -407,6 +469,7 @@ function setupOverlay() {
     if (state.overlayLocked) return;
     event.preventDefault();
     pushOverlayHistory();
+    clearOverlayRedoHistory();
     pointers.set(event.pointerId, pointerPoint(event));
     gesture = startOverlayGesture(event, pointers);
     els.compareFrame.setPointerCapture(event.pointerId);
@@ -426,6 +489,19 @@ function setupOverlay() {
       gesture = pointers.size ? startOverlayGesture(event, pointers) : null;
     });
   });
+}
+
+function toggleReviewFullscreen() {
+  const isFullscreen = !state.reviewFullscreen;
+  state.reviewFullscreen = isFullscreen;
+  if (els.reviewView) els.reviewView.classList.toggle("review-fullscreen", isFullscreen);
+  document.body.classList.toggle("review-fullscreen-active", isFullscreen);
+  if (els.toggleReviewFullscreenButton) {
+    els.toggleReviewFullscreenButton.textContent = isFullscreen ? "Exit full screen" : "Full screen";
+  }
+  if (state.reviewIndex >= 0 && state.reviewItems[state.reviewIndex]) {
+    renderReviewViewer();
+  }
 }
 
 function toggleOverlayFullscreen() {
@@ -543,6 +619,12 @@ function renderStageFilter() {
 }
 
 function renderReview() {
+  if (state.reviewFullscreen) {
+    state.reviewFullscreen = false;
+    if (els.reviewView) els.reviewView.classList.remove("review-fullscreen");
+    document.body.classList.remove("review-fullscreen-active");
+    if (els.toggleReviewFullscreenButton) els.toggleReviewFullscreenButton.textContent = "Full screen";
+  }
   const selectedStage = els.stageFilter.value || "All images";
   const minRating = Number(els.ratingFilter.value);
   const sort = els.sortFilter.value;
@@ -588,6 +670,10 @@ function openReviewViewer(index) {
   els.reviewGrid.classList.add("hidden");
   els.reviewViewer.classList.remove("hidden");
   resetReviewZoom();
+  state.reviewFullscreen = false;
+  if (els.reviewView) els.reviewView.classList.remove("review-fullscreen");
+  document.body.classList.remove("review-fullscreen-active");
+  if (els.toggleReviewFullscreenButton) els.toggleReviewFullscreenButton.textContent = "Full screen";
   renderReviewViewer();
 }
 
@@ -681,9 +767,9 @@ function renderProjects() {
 
   els.projectList.innerHTML = projects.length
     ? projects.map(projectCard).join("")
-    : `<div class="panel empty-state">No projects yet. Start one from the Log tab.</div>`;
+    : `<div class="panel empty-state">No projects yet. Tap + to begin a new piece.</div>`;
 
-  if (!state.selectedProjectId && projects.length) {
+  if (projects.length && !projects.some((project) => project.id === state.selectedProjectId)) {
     state.selectedProjectId = projects[0].id;
   }
   renderSelectedProject();
@@ -694,7 +780,7 @@ function projectCard(artwork) {
   const lastSession = artwork.sessions[artwork.sessions.length - 1];
   const stageLabel = thumb ? thumb.name : "No image yet";
   return `
-    <article class="project-card">
+    <article class="project-card${state.selectedProjectId === artwork.id ? " selected" : ""}">
       <button class="project-open" type="button" data-artwork-id="${artwork.id}" aria-label="Open ${escapeHtml(artwork.title)}">
         ${thumb ? `<img src="${thumb.dataUrl}" alt="">` : `<span class="project-placeholder">No image</span>`}
         <div>
@@ -715,7 +801,8 @@ function projectCard(artwork) {
 
 function selectProject(id) {
   state.selectedProjectId = id;
-  renderSelectedProject();
+  renderProjects();
+  if (els.projectDetail) els.projectDetail.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function currentSelectedProject() {
@@ -1114,6 +1201,7 @@ function syncOverlayControls() {
     input.checked = Number(input.value) === state.overlay.opacity;
   });
   if (els.undoOverlayButton) els.undoOverlayButton.disabled = !state.overlayHistory.length;
+  if (els.redoOverlayButton) els.redoOverlayButton.disabled = !state.overlayRedoHistory.length;
 }
 
 function applyOverlayTransform() {
@@ -1128,6 +1216,7 @@ function loadOverlayPosition(artwork, compareImage) {
   const saved = key && artwork.overlayPositions ? artwork.overlayPositions[key] : null;
   state.overlay = sanitizeOverlay(saved || DEFAULT_OVERLAY);
   state.overlayHistory = [];
+  state.overlayRedoHistory = [];
   if (state.overlay.baseSpace) applyBaseSpace(state.overlay.baseSpace);
   syncOverlayControls();
 }
@@ -1138,17 +1227,37 @@ function pushOverlayHistory() {
   if (previous && overlaySnapshotsMatch(previous, snapshot)) return;
   state.overlayHistory.push(snapshot);
   if (state.overlayHistory.length > 5) state.overlayHistory.shift();
+  state.overlayRedoHistory = [];
   syncOverlayControls();
 }
 
 function undoOverlay() {
   const previous = state.overlayHistory.pop();
   if (!previous) return;
+  state.overlayRedoHistory.push(sanitizeOverlay(state.overlay));
+  if (state.overlayRedoHistory.length > 5) state.overlayRedoHistory.shift();
   state.overlay = sanitizeOverlay(previous);
   syncOverlayControls();
   clampOverlayToStage();
   applyOverlayTransform();
   saveCurrentOverlayPosition();
+}
+
+function redoOverlay() {
+  const next = state.overlayRedoHistory.pop();
+  if (!next) return;
+  state.overlayHistory.push(sanitizeOverlay(state.overlay));
+  if (state.overlayHistory.length > 5) state.overlayHistory.shift();
+  state.overlay = sanitizeOverlay(next);
+  syncOverlayControls();
+  clampOverlayToStage();
+  applyOverlayTransform();
+  saveCurrentOverlayPosition();
+}
+
+function clearOverlayRedoHistory() {
+  state.overlayRedoHistory = [];
+  syncOverlayControls();
 }
 
 function overlaySnapshotsMatch(a, b) {
@@ -1551,7 +1660,7 @@ function resetForm() {
   els.form.reset();
   state.editingId = null;
   els.artworkDateInput.value = new Date().toISOString().slice(0, 10);
-  els.sessionDateInput.valueAsDate = new Date();
+  els.sessionDateInput.value = new Date().toISOString().slice(0, 10);
   state.draftSessions = [];
   state.uploadStages = DEFAULT_STAGES.map((name) => ({ name, rating: 0, dataUrl: "" }));
   els.formTitle.textContent = "New Artwork";
