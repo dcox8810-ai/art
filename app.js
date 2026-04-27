@@ -1,6 +1,8 @@
 const STORAGE_KEY = "portrait-practice-tracker-v1";
+const UI_PREFS_KEY = "portrait-practice-ui-v1";
 const DEFAULT_STAGES = ["Reference", "Block-in", "30 mins", "Final artwork"];
 const DEFAULT_OVERLAY = { x: 0, y: 0, width: 280, height: 350, rotate: 0, opacity: 85 };
+const DEFAULT_TRACE_COLOR = "#ffffff";
 
 const state = {
   artworks: [],
@@ -10,7 +12,9 @@ const state = {
   stageFilterTouched: false,
   reviewItems: [],
   reviewIndex: 0,
-  traceColor: "#c4514a",
+  reviewZoom: { scale: 1, x: 0, y: 0 },
+  overlayHistory: [],
+  traceColor: DEFAULT_TRACE_COLOR,
   overlay: { ...DEFAULT_OVERLAY },
 };
 
@@ -35,8 +39,10 @@ function bindElements() {
   Object.assign(els, {
     form: document.querySelector("#artworkForm"),
     formTitle: document.querySelector("#formTitle"),
+    artworkDateInput: document.querySelector("#artworkDateInput"),
     newArtworkButton: document.querySelector("#newArtworkButton"),
     saveArtworkButton: document.querySelector("#saveArtworkButton"),
+    saveStatus: document.querySelector("#saveStatus"),
     totalTimeDisplay: document.querySelector("#totalTimeDisplay"),
     sessionDateInput: document.querySelector("#sessionDateInput"),
     sessionMinutesInput: document.querySelector("#sessionMinutesInput"),
@@ -55,6 +61,7 @@ function bindElements() {
     customSubjectWrap: document.querySelector("#customSubjectWrap"),
     reviewGrid: document.querySelector("#reviewGrid"),
     reviewViewer: document.querySelector("#reviewViewer"),
+    viewerStage: document.querySelector("#viewerStage"),
     viewerImage: document.querySelector("#viewerImage"),
     viewerTitle: document.querySelector("#viewerTitle"),
     viewerDetails: document.querySelector("#viewerDetails"),
@@ -89,11 +96,13 @@ function bindElements() {
     exitOverlayFullscreenButton: document.querySelector("#exitOverlayFullscreenButton"),
     exportOverlayButton: document.querySelector("#exportOverlayButton"),
     exportOverlayFullscreenButton: document.querySelector("#exportOverlayFullscreenButton"),
+    undoOverlayButton: document.querySelector("#undoOverlayButton"),
     resetOverlayButton: document.querySelector("#resetOverlayButton"),
     traceToggle: document.querySelector("#traceToggle"),
     traceThresholdControl: document.querySelector("#traceThresholdControl"),
     traceColorInputs: document.querySelectorAll("input[name='traceColor']"),
     overlayOpacityInputs: document.querySelectorAll("input[name='overlayOpacity']"),
+    textSizeSelect: document.querySelector("#textSizeSelect"),
   });
 }
 
@@ -103,6 +112,18 @@ function loadData() {
   if (!saved) saveData();
   state.uploadStages = DEFAULT_STAGES.map((name) => ({ name, rating: 0, dataUrl: "" }));
   state.draftSessions = [];
+  loadUiPrefs();
+}
+
+function loadUiPrefs() {
+  const saved = localStorage.getItem(UI_PREFS_KEY);
+  const prefs = saved ? JSON.parse(saved) : {};
+  applyTextSize(prefs.textSize || "default");
+  if (els.textSizeSelect) els.textSizeSelect.value = prefs.textSize || "default";
+}
+
+function saveUiPrefs() {
+  localStorage.setItem(UI_PREFS_KEY, JSON.stringify({ textSize: els.textSizeSelect.value }));
 }
 
 function saveData() {
@@ -125,12 +146,17 @@ function setupTabs() {
 }
 
 function setupForm() {
-  els.form.date.valueAsDate = new Date();
+  els.artworkDateInput.value = new Date().toISOString().slice(0, 10);
   els.sessionDateInput.valueAsDate = new Date();
   setupCustomSelect(els.mediumSelect, els.customMediumWrap);
   setupCustomSelect(els.surfaceSelect, els.customSurfaceWrap);
   setupCustomSelect(els.sizeSelect, els.customSizeWrap);
   setupCustomSelect(els.subjectSelect, els.customSubjectWrap);
+
+  els.textSizeSelect.addEventListener("change", () => {
+    applyTextSize(els.textSizeSelect.value);
+    saveUiPrefs();
+  });
 
   els.addStageButton.addEventListener("click", () => {
     state.uploadStages.push({ name: `Progress ${state.uploadStages.length - 2}`, rating: 0, dataUrl: "" });
@@ -162,11 +188,13 @@ function setupForm() {
 
   els.form.addEventListener("submit", (event) => {
     event.preventDefault();
+    const wasEditing = Boolean(state.editingId);
     const data = new FormData(els.form);
     const subject = data.get("subject") === "Other" ? data.get("customSubject") || "Other" : data.get("subject");
     const medium = data.get("medium") === "Other" ? data.get("customMedium") || "Other" : data.get("medium");
     const surface = data.get("surface") === "Other" ? data.get("customSurface") || "Other" : data.get("surface");
     const size = data.get("size") === "Other" ? data.get("customSize") || "Other" : data.get("size");
+    const defaultDate = state.draftSessions[0] ? state.draftSessions[0].date : new Date().toISOString().slice(0, 10);
     const images = state.uploadStages
       .filter((stage) => stage.name.trim() || stage.dataUrl)
       .map((stage) => ({ ...stage, name: stage.name.trim() || "Untitled stage" }));
@@ -174,7 +202,7 @@ function setupForm() {
     const artwork = {
       id: state.editingId || createId(),
       title: data.get("title"),
-      date: data.get("date"),
+      date: data.get("date") || els.sessionDateInput.value || defaultDate,
       minutes: totalMinutes(state.draftSessions),
       sessions: [...state.draftSessions],
       overallRating: Number(data.get("overallRating")),
@@ -199,6 +227,7 @@ function setupForm() {
     saveData();
     resetForm();
     renderAll();
+    announceSave(wasEditing ? "Saved changes." : "Saved artwork.");
     activateTab("projects");
   });
 
@@ -249,6 +278,8 @@ function setupFilters() {
     const item = state.reviewItems[state.reviewIndex];
     if (item) loadArtworkForEditing(item.artwork.id);
   });
+
+  setupReviewZoom();
 }
 
 function setupOverlay() {
@@ -258,6 +289,7 @@ function setupOverlay() {
   });
   els.exportOverlayButton.addEventListener("click", exportOverlayImage);
   els.exportOverlayFullscreenButton.addEventListener("click", exportOverlayImage);
+  els.undoOverlayButton.addEventListener("click", undoOverlay);
   els.overlayArtwork.addEventListener("change", () => {
     renderOverlayImageOptions();
     renderOverlayImages();
@@ -286,13 +318,12 @@ function setupOverlay() {
   });
 
   ["gesturestart", "gesturechange", "gestureend"].forEach((eventName) => {
-    document.addEventListener(eventName, preventOverlayBrowserZoom, { passive: false });
+    document.addEventListener(eventName, preventBrowserZoom, { passive: false });
   });
-  els.overlayStage.addEventListener("touchmove", (event) => {
-    if (document.querySelector("#view-overlay").classList.contains("active")) event.preventDefault();
-  }, { passive: false });
+  document.addEventListener("touchmove", preventBrowserTouchZoom, { passive: false });
 
   els.resetOverlayButton.addEventListener("click", () => {
+    pushOverlayHistory();
     state.overlay = { ...DEFAULT_OVERLAY };
     syncOverlayControls();
     clampOverlayToStage();
@@ -304,6 +335,7 @@ function setupOverlay() {
   let gesture = null;
   els.compareFrame.addEventListener("pointerdown", (event) => {
     event.preventDefault();
+    pushOverlayHistory();
     pointers.set(event.pointerId, pointerPoint(event));
     gesture = startOverlayGesture(event, pointers);
     els.compareFrame.setPointerCapture(event.pointerId);
@@ -483,12 +515,14 @@ function openReviewViewer(index) {
   state.reviewIndex = index;
   els.reviewGrid.classList.add("hidden");
   els.reviewViewer.classList.remove("hidden");
+  resetReviewZoom();
   renderReviewViewer();
 }
 
 function stepReview(direction) {
   if (!state.reviewItems.length) return;
   state.reviewIndex = (state.reviewIndex + direction + state.reviewItems.length) % state.reviewItems.length;
+  resetReviewZoom();
   renderReviewViewer();
 }
 
@@ -499,6 +533,72 @@ function renderReviewViewer() {
   els.viewerImage.alt = `${item.image.name} for ${item.artwork.title}`;
   els.viewerTitle.textContent = item.artwork.title;
   els.viewerDetails.textContent = `${item.image.name} · ${item.artwork.medium || "Medium open"} · ${item.artwork.subject || "Subject open"} · ${item.artwork.minutes} min · ${state.reviewIndex + 1}/${state.reviewItems.length}`;
+  applyReviewZoom();
+}
+
+function setupReviewZoom() {
+  if (!els.viewerStage) return;
+  const pointers = new Map();
+  let gesture = null;
+
+  const startGesture = () => ({
+    pointers: objectValuesFromMap(pointers),
+    transform: { ...state.reviewZoom },
+  });
+
+  els.viewerStage.addEventListener("pointerdown", (event) => {
+    if (!state.reviewItems.length) return;
+    event.preventDefault();
+    pointers.set(event.pointerId, pointerPoint(event));
+    gesture = startGesture();
+    els.viewerStage.setPointerCapture(event.pointerId);
+  });
+
+  els.viewerStage.addEventListener("pointermove", (event) => {
+    if (!gesture || !pointers.has(event.pointerId)) return;
+    event.preventDefault();
+    pointers.set(event.pointerId, pointerPoint(event));
+    updateReviewZoomFromGesture(gesture, objectValuesFromMap(pointers));
+  });
+
+  ["pointerup", "pointercancel", "lostpointercapture"].forEach((eventName) => {
+    els.viewerStage.addEventListener(eventName, (event) => {
+      pointers.delete(event.pointerId);
+      if (!pointers.size) gesture = null;
+    });
+  });
+}
+
+function updateReviewZoomFromGesture(gesture, points) {
+  if (!points.length) return;
+  if (points.length >= 2 && gesture.pointers.length >= 2) {
+    const center = pointsCenter(points);
+    const startDistance = Math.max(1, pointsDistance(gesture.pointers));
+    const scale = clampReviewScale(gesture.transform.scale * (pointsDistance(points) / startDistance));
+    state.reviewZoom.scale = scale;
+    state.reviewZoom.x = gesture.transform.x + (center.x - pointsCenter(gesture.pointers).x);
+    state.reviewZoom.y = gesture.transform.y + (center.y - pointsCenter(gesture.pointers).y);
+  } else if (gesture.transform.scale > 1) {
+    const current = points[0];
+    const start = gesture.pointers[0];
+    state.reviewZoom.x = gesture.transform.x + (current.x - start.x);
+    state.reviewZoom.y = gesture.transform.y + (current.y - start.y);
+  }
+  applyReviewZoom();
+}
+
+function applyReviewZoom() {
+  if (!els.viewerImage) return;
+  els.viewerImage.style.transform = `translate(calc(-50% + ${state.reviewZoom.x}px), calc(-50% + ${state.reviewZoom.y}px)) scale(${state.reviewZoom.scale})`;
+}
+
+function resetReviewZoom() {
+  state.reviewZoom = { scale: 1, x: 0, y: 0 };
+  applyReviewZoom();
+}
+
+function clampReviewScale(value) {
+  return Math.min(4, Math.max(1, Number(value.toFixed(3))));
 }
 
 function renderProjects() {
@@ -809,6 +909,7 @@ function syncOverlayControls() {
   toArray(els.overlayOpacityInputs).forEach((input) => {
     input.checked = Number(input.value) === state.overlay.opacity;
   });
+  if (els.undoOverlayButton) els.undoOverlayButton.disabled = !state.overlayHistory.length;
 }
 
 function applyOverlayTransform() {
@@ -822,8 +923,32 @@ function loadOverlayPosition(artwork, compareImage) {
   const key = overlayPositionKey(compareImage);
   const saved = key && artwork.overlayPositions ? artwork.overlayPositions[key] : null;
   state.overlay = sanitizeOverlay(saved || DEFAULT_OVERLAY);
+  state.overlayHistory = [];
   if (state.overlay.baseSpace) applyBaseSpace(state.overlay.baseSpace);
   syncOverlayControls();
+}
+
+function pushOverlayHistory() {
+  const snapshot = sanitizeOverlay(state.overlay);
+  const previous = state.overlayHistory[state.overlayHistory.length - 1];
+  if (previous && overlaySnapshotsMatch(previous, snapshot)) return;
+  state.overlayHistory.push(snapshot);
+  if (state.overlayHistory.length > 5) state.overlayHistory.shift();
+  syncOverlayControls();
+}
+
+function undoOverlay() {
+  const previous = state.overlayHistory.pop();
+  if (!previous) return;
+  state.overlay = sanitizeOverlay(previous);
+  syncOverlayControls();
+  clampOverlayToStage();
+  applyOverlayTransform();
+  saveCurrentOverlayPosition();
+}
+
+function overlaySnapshotsMatch(a, b) {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height && a.rotate === b.rotate && a.opacity === b.opacity;
 }
 
 function saveCurrentOverlayPosition() {
@@ -872,6 +997,24 @@ function sanitizeBaseSpace(value) {
     width: Number(value.width) || 0,
     height: Number(value.height) || 0,
   };
+}
+
+function applyTextSize(size) {
+  const next = size === "small" || size === "large" ? size : "default";
+  if (next === "default") {
+    document.documentElement.removeAttribute("data-text-size");
+    return;
+  }
+  document.documentElement.setAttribute("data-text-size", next);
+}
+
+function announceSave(message) {
+  if (!els.saveStatus) return;
+  els.saveStatus.textContent = message;
+  clearTimeout(announceSave.timer);
+  announceSave.timer = window.setTimeout(() => {
+    if (els.saveStatus.textContent === message) els.saveStatus.textContent = "";
+  }, 2200);
 }
 
 function overlayToBaseSpace() {
@@ -974,8 +1117,12 @@ function artworkDisplayRect(stageWidth, stageHeight) {
   };
 }
 
-function preventOverlayBrowserZoom(event) {
-  if (document.querySelector("#view-overlay").classList.contains("active")) event.preventDefault();
+function preventBrowserZoom(event) {
+  event.preventDefault();
+}
+
+function preventBrowserTouchZoom(event) {
+  if (event.touches && event.touches.length > 1) event.preventDefault();
 }
 
 async function exportOverlayImage() {
@@ -983,6 +1130,7 @@ async function exportOverlayImage() {
   if (!blob) return;
   const artwork = currentOverlayArtwork();
   const filename = `${slugify(artwork ? artwork.title : "studio-log-overlay")}-overlay.png`;
+
   if (typeof File !== "undefined" && navigator.canShare && navigator.share) {
     const file = new File([blob], filename, { type: "image/png" });
     if (navigator.canShare({ files: [file] })) {
@@ -1198,12 +1346,13 @@ function clampOverlayToStage() {
 function resetForm() {
   els.form.reset();
   state.editingId = null;
-  els.form.date.valueAsDate = new Date();
+  els.artworkDateInput.value = new Date().toISOString().slice(0, 10);
   els.sessionDateInput.valueAsDate = new Date();
   state.draftSessions = [];
   state.uploadStages = DEFAULT_STAGES.map((name) => ({ name, rating: 0, dataUrl: "" }));
   els.formTitle.textContent = "New Artwork";
   els.saveArtworkButton.textContent = "Save artwork";
+  if (els.saveStatus) els.saveStatus.textContent = "";
   els.newArtworkButton.classList.add("hidden");
   [els.customMediumWrap, els.customSurfaceWrap, els.customSizeWrap, els.customSubjectWrap].forEach((wrap) => wrap.classList.add("hidden"));
   els.customSubjectWrap.classList.add("hidden");
@@ -1217,9 +1366,10 @@ function loadArtworkForEditing(id) {
   state.editingId = id;
   els.formTitle.textContent = "Artwork Details";
   els.saveArtworkButton.textContent = "Save changes";
+  if (els.saveStatus) els.saveStatus.textContent = "";
   els.newArtworkButton.classList.remove("hidden");
   els.form.elements.title.value = artwork.title || "";
-  els.form.elements.date.value = artwork.date || new Date().toISOString().slice(0, 10);
+  els.artworkDateInput.value = artwork.date || new Date().toISOString().slice(0, 10);
   els.form.elements.overallRating.value = artwork.overallRating || 0;
   setSelectWithCustom(els.mediumSelect, els.form.elements.customMedium, els.customMediumWrap, artwork.medium);
   setSelectWithCustom(els.surfaceSelect, els.form.elements.customSurface, els.customSurfaceWrap, artwork.surface);
