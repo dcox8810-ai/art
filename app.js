@@ -1,5 +1,8 @@
 const STORAGE_KEY = "portrait-practice-tracker-v1";
 const UI_PREFS_KEY = "portrait-practice-ui-v1";
+const DB_NAME = "studio-log-db";
+const DB_STORE = "app-state";
+const DB_VERSION = 1;
 const DEFAULT_STAGES = ["Reference", "Block-in", "30 mins", "Final artwork"];
 const DEFAULT_OVERLAY = { x: 0, y: 0, width: 280, height: 350, rotate: 0, opacity: 85 };
 const DEFAULT_TRACE_COLOR = "#00e676";
@@ -18,6 +21,7 @@ const state = {
   overlayHistory: [],
   overlayRedoHistory: [],
   overlayLocked: false,
+  dataRevision: 0,
   overlayStageZoom: { scale: 1, x: 0, y: 0 },
   defaultTraceColor: DEFAULT_TRACE_COLOR,
   traceColor: DEFAULT_TRACE_COLOR,
@@ -126,6 +130,7 @@ function bindElements() {
     toggleOverlayFullscreenButton: document.querySelector("#toggleOverlayFullscreenButton"),
     exitOverlayFullscreenButton: document.querySelector("#exitOverlayFullscreenButton"),
     exportOverlayButton: document.querySelector("#exportOverlayButton"),
+    exportOpacityFramesButton: document.querySelector("#exportOpacityFramesButton"),
     exportOverlayFullscreenButton: document.querySelector("#exportOverlayFullscreenButton"),
     undoOverlayButton: document.querySelector("#undoOverlayButton"),
     redoOverlayButton: document.querySelector("#redoOverlayButton"),
@@ -136,6 +141,7 @@ function bindElements() {
     overlayLockToggle: document.querySelector("#overlayLockToggle"),
     traceColorInputs: document.querySelectorAll("input[name='traceColor']"),
     overlayOpacityInputs: document.querySelectorAll("input[name='overlayOpacity']"),
+    overlayOpacityField: document.querySelector(".opacity-field"),
     textSizeSelect: document.querySelector("#textSizeSelect"),
     themeSelect: document.querySelector("#themeSelect"),
     defaultTraceColorInputs: document.querySelectorAll("input[name='defaultTraceColor']"),
@@ -143,12 +149,18 @@ function bindElements() {
 }
 
 function loadData() {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  state.artworks = normalizeArtworks(saved ? JSON.parse(saved) : seedArtworks());
-  if (!saved) saveData();
+  let saved = null;
+  try {
+    saved = localStorage.getItem(STORAGE_KEY);
+    state.artworks = normalizeArtworks(saved ? JSON.parse(saved) : seedArtworks());
+  } catch (error) {
+    state.artworks = seedArtworks();
+    saved = null;
+  }
   state.uploadStages = DEFAULT_STAGES.map((name) => ({ name, rating: 0, dataUrl: "" }));
   state.draftSessions = [];
   loadUiPrefs();
+  restoreDataFromIndexedDb(Boolean(saved), state.dataRevision);
 }
 
 function loadUiPrefs() {
@@ -185,8 +197,77 @@ function readUiPrefs() {
   return saved ? JSON.parse(saved) : {};
 }
 
+async function restoreDataFromIndexedDb(hadLocalData, revision) {
+  try {
+    const stored = await readArtworksFromIndexedDb();
+    if (state.dataRevision !== revision) return;
+    if (Array.isArray(stored)) {
+      state.artworks = normalizeArtworks(stored);
+      renderAll();
+      return;
+    }
+    if (!hadLocalData) saveData();
+  } catch (error) {
+    if (!hadLocalData) saveData();
+  }
+}
+
+function openStudioDb() {
+  return new Promise((resolve, reject) => {
+    if (!("indexedDB" in window)) {
+      reject(new Error("IndexedDB is not available."));
+      return;
+    }
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(DB_STORE);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function readArtworksFromIndexedDb() {
+  const db = await openStudioDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(DB_STORE, "readonly");
+    const request = transaction.objectStore(DB_STORE).get("artworks");
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error);
+    transaction.oncomplete = () => db.close();
+    transaction.onerror = () => {
+      db.close();
+      reject(transaction.error);
+    };
+  });
+}
+
+async function saveArtworksToIndexedDb(artworks) {
+  const db = await openStudioDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(DB_STORE, "readwrite");
+    transaction.objectStore(DB_STORE).put(JSON.parse(JSON.stringify(artworks)), "artworks");
+    transaction.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    transaction.onerror = () => {
+      db.close();
+      reject(transaction.error);
+    };
+  });
+}
+
 function saveData() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.artworks));
+  state.dataRevision += 1;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.artworks));
+  } catch (error) {
+    setAppStatus("Saved to browser database. Local quick cache is full.");
+  }
+  saveArtworksToIndexedDb(state.artworks).catch(() => {
+    setAppStatus("Could not save to browser database. Please export a backup.");
+  });
 }
 
 function setupTabs() {
@@ -473,6 +554,7 @@ function setupOverlay() {
     if (document.querySelector("#view-overlay").classList.contains("overlay-fullscreen")) toggleOverlayFullscreen();
   });
   els.exportOverlayButton.addEventListener("click", exportOverlayImage);
+  if (els.exportOpacityFramesButton) els.exportOpacityFramesButton.addEventListener("click", exportOpacityFrames);
   els.exportOverlayFullscreenButton.addEventListener("click", exportOverlayImage);
   els.undoOverlayButton.addEventListener("click", undoOverlay);
   if (els.redoOverlayButton) els.redoOverlayButton.addEventListener("click", redoOverlay);
@@ -514,12 +596,18 @@ function setupOverlay() {
   });
   toArray(els.overlayOpacityInputs).forEach((input) => {
     input.addEventListener("change", () => {
-      clearOverlayRedoHistory();
-      state.overlay.opacity = Number(input.value);
-      applyOverlayTransform();
-      saveCurrentOverlayPosition();
+      setOverlayOpacity(Number(input.value));
     });
   });
+  if (els.overlayOpacityField) {
+    els.overlayOpacityField.addEventListener("click", (event) => {
+      const label = event.target.closest("label");
+      const input = label ? label.querySelector("input[name='overlayOpacity']") : null;
+      if (!input) return;
+      input.checked = true;
+      setOverlayOpacity(Number(input.value));
+    });
+  }
 
   ["gesturestart", "gesturechange", "gestureend"].forEach((eventName) => {
     document.addEventListener(eventName, preventBrowserZoom, { passive: false });
@@ -612,7 +700,8 @@ function toggleOverlayFullscreen() {
   const baseSpace = overlayToBaseSpace();
   const isFullscreen = view.classList.toggle("overlay-fullscreen");
   document.body.classList.toggle("overlay-fullscreen-active", isFullscreen);
-  els.toggleOverlayFullscreenButton.textContent = isFullscreen ? "Exit full screen" : "Full screen overlay";
+  els.toggleOverlayFullscreenButton.textContent = isFullscreen ? "×" : "⛶";
+  els.toggleOverlayFullscreenButton.setAttribute("aria-label", isFullscreen ? "Exit full screen" : "Full screen overlay");
   setTimeout(() => {
     if (baseSpace) applyBaseSpace(baseSpace);
     clampOverlayToStage();
@@ -997,9 +1086,12 @@ function deleteArtwork(id) {
   state.artworks = state.artworks.filter((item) => item.id !== id);
   if (state.editingId === id) resetForm();
   if (state.selectedProjectId === id) state.selectedProjectId = state.artworks[0] ? state.artworks[0].id : null;
+  const card = els.projectList ? els.projectList.querySelector(`[data-project-card-id="${CSS.escape(id)}"]`) : null;
+  if (card) card.remove();
   saveData();
   renderAll();
   activateTab("projects");
+  setAppStatus(`Deleted ${artwork.title || "Untitled artwork"}.`);
 }
 
 function exportBackup() {
@@ -1363,6 +1455,16 @@ function syncOverlayControls() {
   if (els.redoOverlayButton) els.redoOverlayButton.disabled = !state.overlayRedoHistory.length;
 }
 
+function setOverlayOpacity(value) {
+  if (!Number.isFinite(value)) return;
+  const next = Math.max(0, Math.min(100, value));
+  if (state.overlay.opacity !== next) clearOverlayRedoHistory();
+  state.overlay.opacity = next;
+  syncOverlayControls();
+  applyOverlayTransform();
+  saveCurrentOverlayPosition();
+}
+
 function applyOverlayTransform() {
   els.compareFrame.style.opacity = state.overlay.opacity / 100;
   els.compareFrame.style.width = `${state.overlay.width}px`;
@@ -1670,7 +1772,30 @@ async function exportOverlayImage() {
   URL.revokeObjectURL(url);
 }
 
-function renderOverlayBlob() {
+async function exportOpacityFrames() {
+  const artwork = currentOverlayArtwork();
+  const baseName = slugify(artwork ? artwork.title : "studio-log-overlay");
+  const opacities = [0, 35, 60, 85, 100];
+  for (const opacity of opacities) {
+    const blob = await renderOverlayBlob(opacity);
+    if (!blob) return;
+    downloadBlob(blob, `${baseName}-overlay-${opacity}.png`);
+  }
+  setAppStatus("Exported opacity frames. Use Photos or Shortcuts to turn them into an animation.");
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function renderOverlayBlob(opacity = state.overlay.opacity) {
   return new Promise((resolve) => {
     const stageSize = overlayStageSize();
     const scale = Math.min(3, Math.max(2, window.devicePixelRatio || 1));
@@ -1683,14 +1808,14 @@ function renderOverlayBlob() {
     ctx.fillRect(0, 0, stageSize.width, stageSize.height);
 
     drawContainedImage(ctx, els.artworkBaseLayer, artworkDisplayRect(stageSize.width, stageSize.height));
-    drawOverlayExport(ctx, stageSize);
+    drawOverlayExport(ctx, stageSize, opacity);
     canvas.toBlob(resolve, "image/png", 0.96);
   });
 }
 
-function drawOverlayExport(ctx, stageSize) {
+function drawOverlayExport(ctx, stageSize, opacity = state.overlay.opacity) {
   ctx.save();
-  ctx.globalAlpha = state.overlay.opacity / 100;
+  ctx.globalAlpha = opacity / 100;
   ctx.translate(stageSize.width / 2 + state.overlay.x, stageSize.height / 2 + state.overlay.y);
   ctx.rotate((state.overlay.rotate * Math.PI) / 180);
   const frame = {

@@ -583,6 +583,13 @@ textarea {
   padding: 10px 12px;
 }
 
+.icon-compact {
+  min-width: 44px;
+  padding: 8px 10px;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
 .project-icon-button {
   width: 38px;
   height: 38px;
@@ -1494,7 +1501,10 @@ body.review-fullscreen-active .view:not(#view-review) {
 
 .opacity-field input {
   position: absolute;
+  width: 1px;
+  height: 1px;
   opacity: 0;
+  pointer-events: none;
 }
 
 .opacity-field label:has(input:checked) {

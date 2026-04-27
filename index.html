@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-title" content="Studio Log" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=13" />
+    <link rel="stylesheet" href="styles.css?v=14" />
   </head>
   <body>
     <main class="app-shell">
@@ -349,6 +349,7 @@
             <label class="toggle-row overlay-lock-inline"><input id="overlayLockToggle" type="checkbox" /> Lock overlay</label>
             <button class="secondary compact" type="button" id="undoOverlayButton">Undo</button>
             <button class="secondary compact" type="button" id="redoOverlayButton">Redo</button>
+            <button class="secondary compact icon-compact" type="button" id="toggleOverlayFullscreenButton" aria-label="Full screen overlay">⛶</button>
             <button class="secondary compact" type="button" id="closeOverlayButton">Done</button>
           </div>
           <div id="overlayViewport" class="overlay-viewport">
@@ -398,8 +399,8 @@
           </div>
         </div>
         <div class="panel overlay-picker">
-          <button class="primary slim" type="button" id="toggleOverlayFullscreenButton">Full screen overlay</button>
           <button class="secondary slim" type="button" id="exportOverlayButton">Export image</button>
+          <button class="secondary slim" type="button" id="exportOpacityFramesButton">Export opacity frames</button>
           <label>
             Artwork
             <select id="overlayArtwork"></select>
@@ -447,7 +448,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=13"></script>
+    <script src="app.js?v=14"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");
