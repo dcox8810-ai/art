@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-title" content="Studio Log" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=5" />
+    <link rel="stylesheet" href="styles.css?v=6" />
   </head>
   <body>
     <main class="app-shell">
@@ -281,7 +281,8 @@
             <button class="overlay-handle corner-handle corner-ne" type="button" data-action="resize-ne" aria-label="Resize overlay from top right"></button>
             <button class="overlay-handle corner-handle corner-sw" type="button" data-action="resize-sw" aria-label="Resize overlay from bottom left"></button>
             <button class="overlay-handle corner-handle corner-se" type="button" data-action="resize-se" aria-label="Resize overlay from bottom right"></button>
-            <button class="overlay-handle rotate-handle" type="button" data-action="rotate" aria-label="Rotate overlay"></button>
+            <button class="overlay-handle rotate-handle rotate-top" type="button" data-action="rotate" aria-label="Rotate overlay from top"></button>
+            <button class="overlay-handle rotate-handle rotate-bottom" type="button" data-action="rotate" aria-label="Rotate overlay from bottom"></button>
           </div>
         </section>
 
@@ -342,7 +343,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=5"></script>
+    <script src="app.js?v=6"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");

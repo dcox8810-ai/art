@@ -279,6 +279,7 @@ function setupOverlay() {
   let dragAction = "";
   let start = null;
   els.compareFrame.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
     const handle = event.target.closest("[data-action]");
     dragAction = handle ? handle.dataset.action : "move";
     start = {
@@ -294,6 +295,7 @@ function setupOverlay() {
   });
   els.compareFrame.addEventListener("pointermove", (event) => {
     if (!dragAction) return;
+    event.preventDefault();
     updateOverlayFromDrag(event, dragAction, start);
     syncOverlayControls();
     applyOverlayTransform();
@@ -922,13 +924,9 @@ function clampOverlayToStage() {
   }
   const halfWidth = state.overlay.width / 2;
   const halfHeight = state.overlay.height / 2;
-  const edgePad = 34;
-  const maxX = halfWidth <= stageRect.width / 2
-    ? Math.max(0, stageRect.width / 2 - halfWidth - 18)
-    : Math.max(0, halfWidth - stageRect.width / 2 + edgePad);
-  const maxY = halfHeight <= stageRect.height / 2
-    ? Math.max(0, stageRect.height / 2 - halfHeight - 18)
-    : Math.max(0, halfHeight - stageRect.height / 2 + edgePad);
+  const reachableStrip = 44;
+  const maxX = Math.max(0, stageRect.width / 2 + halfWidth - reachableStrip);
+  const maxY = Math.max(0, stageRect.height / 2 + halfHeight - reachableStrip);
   state.overlay.x = clamp(state.overlay.x, -maxX, maxX);
   state.overlay.y = clamp(state.overlay.y, -maxY, maxY);
 }

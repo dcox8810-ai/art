@@ -870,10 +870,17 @@ body.overlay-fullscreen-active .view:not(#view-overlay) {
 }
 
 .rotate-handle {
-  top: -34px;
   left: 50%;
   background: var(--gold);
   transform: translateX(-50%);
+}
+
+.rotate-top {
+  top: -34px;
+}
+
+.rotate-bottom {
+  bottom: -34px;
 }
 
 .controls {
