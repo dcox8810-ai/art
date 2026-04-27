@@ -86,6 +86,9 @@ function bindElements() {
     traceCanvas: document.querySelector("#traceCanvas"),
     overlayStage: document.querySelector("#overlayStage"),
     toggleOverlayFullscreenButton: document.querySelector("#toggleOverlayFullscreenButton"),
+    exitOverlayFullscreenButton: document.querySelector("#exitOverlayFullscreenButton"),
+    exportOverlayButton: document.querySelector("#exportOverlayButton"),
+    exportOverlayFullscreenButton: document.querySelector("#exportOverlayFullscreenButton"),
     resetOverlayButton: document.querySelector("#resetOverlayButton"),
     traceToggle: document.querySelector("#traceToggle"),
     traceThresholdControl: document.querySelector("#traceThresholdControl"),
@@ -250,12 +253,22 @@ function setupFilters() {
 
 function setupOverlay() {
   els.toggleOverlayFullscreenButton.addEventListener("click", toggleOverlayFullscreen);
+  els.exitOverlayFullscreenButton.addEventListener("click", () => {
+    if (document.querySelector("#view-overlay").classList.contains("overlay-fullscreen")) toggleOverlayFullscreen();
+  });
+  els.exportOverlayButton.addEventListener("click", exportOverlayImage);
+  els.exportOverlayFullscreenButton.addEventListener("click", exportOverlayImage);
   els.overlayArtwork.addEventListener("change", () => {
     renderOverlayImageOptions();
     renderOverlayImages();
   });
   els.overlayImage.addEventListener("change", renderOverlayImages);
   els.referenceLayer.addEventListener("load", renderReferenceTrace);
+  els.artworkBaseLayer.addEventListener("load", () => {
+    if (state.overlay.baseSpace) applyBaseSpace(state.overlay.baseSpace);
+    clampOverlayToStage();
+    applyOverlayTransform();
+  });
   els.traceToggle.addEventListener("change", applyOverlayMode);
   els.traceThresholdControl.addEventListener("input", renderReferenceTrace);
   toArray(els.traceColorInputs).forEach((input) => {
@@ -271,6 +284,13 @@ function setupOverlay() {
       saveCurrentOverlayPosition();
     });
   });
+
+  ["gesturestart", "gesturechange", "gestureend"].forEach((eventName) => {
+    document.addEventListener(eventName, preventOverlayBrowserZoom, { passive: false });
+  });
+  els.overlayStage.addEventListener("touchmove", (event) => {
+    if (document.querySelector("#view-overlay").classList.contains("active")) event.preventDefault();
+  }, { passive: false });
 
   els.resetOverlayButton.addEventListener("click", () => {
     state.overlay = { ...DEFAULT_OVERLAY };
@@ -307,12 +327,15 @@ function setupOverlay() {
 
 function toggleOverlayFullscreen() {
   const view = document.querySelector("#view-overlay");
+  const baseSpace = overlayToBaseSpace();
   const isFullscreen = view.classList.toggle("overlay-fullscreen");
   document.body.classList.toggle("overlay-fullscreen-active", isFullscreen);
   els.toggleOverlayFullscreenButton.textContent = isFullscreen ? "Exit full screen" : "Full screen overlay";
   setTimeout(() => {
+    if (baseSpace) applyBaseSpace(baseSpace);
     clampOverlayToStage();
     applyOverlayTransform();
+    saveCurrentOverlayPosition();
   }, 0);
 }
 
@@ -600,7 +623,13 @@ function mergeImportedArtworks(incoming, mode) {
 }
 
 function firstImage(artwork) {
-  return artwork.images.find((image) => image.dataUrl);
+  return preferredProjectImage(artwork);
+}
+
+function preferredProjectImage(artwork) {
+  return artwork.images.find((image) => image.name === "Final artwork" && image.dataUrl)
+    || artwork.images.find((image) => image.name === "Reference" && image.dataUrl)
+    || artwork.images.find((image) => image.dataUrl);
 }
 
 function compareCards(a, b, sort) {
@@ -793,6 +822,7 @@ function loadOverlayPosition(artwork, compareImage) {
   const key = overlayPositionKey(compareImage);
   const saved = key && artwork.overlayPositions ? artwork.overlayPositions[key] : null;
   state.overlay = sanitizeOverlay(saved || DEFAULT_OVERLAY);
+  if (state.overlay.baseSpace) applyBaseSpace(state.overlay.baseSpace);
   syncOverlayControls();
 }
 
@@ -802,7 +832,10 @@ function saveCurrentOverlayPosition() {
   const key = overlayPositionKey(compareImage);
   if (!artwork || !key) return;
   if (!artwork.overlayPositions) artwork.overlayPositions = {};
-  artwork.overlayPositions[key] = sanitizeOverlay(state.overlay);
+  artwork.overlayPositions[key] = {
+    ...sanitizeOverlay(state.overlay),
+    baseSpace: overlayToBaseSpace(),
+  };
   artwork.updatedAt = new Date().toISOString();
   saveData();
 }
@@ -827,7 +860,44 @@ function sanitizeOverlay(value) {
     height: clamp(Number(overlay.height) || DEFAULT_OVERLAY.height, 80, 3000),
     rotate: clamp(Number(overlay.rotate) || 0, -180, 180),
     opacity: clamp(Number(overlay.opacity) || 0, 0, 100),
+    baseSpace: sanitizeBaseSpace(overlay.baseSpace),
   };
+}
+
+function sanitizeBaseSpace(value) {
+  if (!value) return null;
+  return {
+    x: Number(value.x) || 0,
+    y: Number(value.y) || 0,
+    width: Number(value.width) || 0,
+    height: Number(value.height) || 0,
+  };
+}
+
+function overlayToBaseSpace() {
+  const stageSize = overlayStageSize();
+  const baseRect = artworkDisplayRect(stageSize.width, stageSize.height);
+  if (!baseRect) return null;
+  const centerX = stageSize.width / 2 + state.overlay.x;
+  const centerY = stageSize.height / 2 + state.overlay.y;
+  return {
+    x: (centerX - (baseRect.x + baseRect.width / 2)) / baseRect.width,
+    y: (centerY - (baseRect.y + baseRect.height / 2)) / baseRect.height,
+    width: state.overlay.width / baseRect.width,
+    height: state.overlay.height / baseRect.height,
+  };
+}
+
+function applyBaseSpace(baseSpace) {
+  const stageSize = overlayStageSize();
+  const baseRect = artworkDisplayRect(stageSize.width, stageSize.height);
+  if (!baseRect || !baseSpace) return;
+  const centerX = baseRect.x + baseRect.width / 2 + baseSpace.x * baseRect.width;
+  const centerY = baseRect.y + baseRect.height / 2 + baseSpace.y * baseRect.height;
+  state.overlay.x = centerX - stageSize.width / 2;
+  state.overlay.y = centerY - stageSize.height / 2;
+  state.overlay.width = baseSpace.width * baseRect.width;
+  state.overlay.height = baseSpace.height * baseRect.height;
 }
 
 function applyOverlayMode() {
@@ -886,6 +956,101 @@ function containRect(sourceWidth, sourceHeight, targetWidth, targetHeight) {
     width,
     height,
   };
+}
+
+function overlayStageSize() {
+  const rect = els.overlayStage.getBoundingClientRect();
+  return { width: rect.width || 1, height: rect.height || 1 };
+}
+
+function artworkDisplayRect(stageWidth, stageHeight) {
+  if (!els.artworkBaseLayer.naturalWidth || !els.artworkBaseLayer.naturalHeight) return null;
+  const rect = containRect(els.artworkBaseLayer.naturalWidth, els.artworkBaseLayer.naturalHeight, stageWidth * 0.82, stageHeight * 0.88);
+  return {
+    x: (stageWidth - rect.width) / 2,
+    y: (stageHeight - rect.height) / 2,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function preventOverlayBrowserZoom(event) {
+  if (document.querySelector("#view-overlay").classList.contains("active")) event.preventDefault();
+}
+
+async function exportOverlayImage() {
+  const blob = await renderOverlayBlob();
+  if (!blob) return;
+  const artwork = currentOverlayArtwork();
+  const filename = `${slugify(artwork ? artwork.title : "studio-log-overlay")}-overlay.png`;
+
+  if (typeof File !== "undefined" && navigator.canShare && navigator.share) {
+    const file = new File([blob], filename, { type: "image/png" });
+    if (navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: "Studio Log overlay" });
+        return;
+      } catch (error) {
+        if (error && error.name === "AbortError") return;
+      }
+    }
+  }
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function renderOverlayBlob() {
+  return new Promise((resolve) => {
+    const stageSize = overlayStageSize();
+    const scale = Math.min(3, Math.max(2, window.devicePixelRatio || 1));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(stageSize.width * scale);
+    canvas.height = Math.round(stageSize.height * scale);
+    const ctx = canvas.getContext("2d");
+    ctx.scale(scale, scale);
+    ctx.fillStyle = "#fbfaf7";
+    ctx.fillRect(0, 0, stageSize.width, stageSize.height);
+
+    drawContainedImage(ctx, els.artworkBaseLayer, artworkDisplayRect(stageSize.width, stageSize.height));
+    drawOverlayExport(ctx, stageSize);
+    canvas.toBlob(resolve, "image/png", 0.96);
+  });
+}
+
+function drawOverlayExport(ctx, stageSize) {
+  ctx.save();
+  ctx.globalAlpha = state.overlay.opacity / 100;
+  ctx.translate(stageSize.width / 2 + state.overlay.x, stageSize.height / 2 + state.overlay.y);
+  ctx.rotate((state.overlay.rotate * Math.PI) / 180);
+  const frame = {
+    x: -state.overlay.width / 2,
+    y: -state.overlay.height / 2,
+    width: state.overlay.width,
+    height: state.overlay.height,
+  };
+  if (els.traceToggle.checked) {
+    ctx.drawImage(els.traceCanvas, frame.x, frame.y, frame.width, frame.height);
+  } else {
+    drawContainedImage(ctx, els.tracePhotoLayer, { x: frame.x, y: frame.y, width: frame.width, height: frame.height });
+  }
+  ctx.restore();
+}
+
+function drawContainedImage(ctx, image, target) {
+  if (!target || !image || !image.naturalWidth || !image.naturalHeight) return;
+  const rect = containRect(image.naturalWidth, image.naturalHeight, target.width, target.height);
+  ctx.drawImage(image, target.x + rect.x, target.y + rect.y, rect.width, rect.height);
+}
+
+function slugify(value) {
+  return String(value || "studio-log-overlay").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "studio-log-overlay";
 }
 
 function hexToRgba(hex, alpha) {

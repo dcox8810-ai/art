@@ -452,8 +452,23 @@ textarea {
 
 .backup-tools {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   margin-bottom: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 9px 11px;
+}
+
+.backup-tools summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.backup-tools[open] summary {
+  margin-bottom: 6px;
 }
 
 .backup-actions {
@@ -705,6 +720,7 @@ textarea {
 
 body.overlay-fullscreen-active {
   overflow: hidden;
+  touch-action: none;
 }
 
 body.overlay-fullscreen-active .topbar,
@@ -717,12 +733,15 @@ body.overlay-fullscreen-active .view:not(#view-overlay) {
   position: fixed;
   inset: 0;
   z-index: 100;
-  display: grid;
-  grid-template-rows: auto minmax(320px, 1fr) minmax(0, auto);
-  gap: 10px;
-  overflow: auto;
-  padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
-  background: var(--paper);
+  display: block;
+  overflow: hidden;
+  padding: 0;
+  background: #101319;
+}
+
+#view-overlay.overlay-fullscreen .overlay-picker,
+#view-overlay.overlay-fullscreen .controls {
+  display: none;
 }
 
 #view-overlay.overlay-fullscreen .overlay-picker {
@@ -731,15 +750,12 @@ body.overlay-fullscreen-active .view:not(#view-overlay) {
 }
 
 #view-overlay.overlay-fullscreen .overlay-stage {
-  height: auto;
-  min-height: min(62vh, 680px);
-}
-
-#view-overlay.overlay-fullscreen .controls {
-  margin-top: 0;
-  max-height: 34vh;
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
+  position: fixed;
+  inset: 0;
+  height: 100svh;
+  min-height: 100svh;
+  border: 0;
+  border-radius: 0;
 }
 
 #view-overlay.overlay-fullscreen .color-field,
@@ -755,6 +771,34 @@ body.overlay-fullscreen-active .view:not(#view-overlay) {
   min-height: 34px;
   padding-top: 7px;
   padding-bottom: 7px;
+}
+
+.fullscreen-actions {
+  display: none;
+}
+
+#view-overlay.overlay-fullscreen .fullscreen-actions {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  z-index: 5;
+  display: flex;
+  gap: 8px;
+}
+
+.fullscreen-actions button {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(16, 19, 25, 0.62);
+  color: white;
+  cursor: pointer;
+  font-size: 1.2rem;
+  font-weight: 900;
+  backdrop-filter: blur(10px);
 }
 
 .overlay-stage img {
@@ -824,6 +868,14 @@ body.overlay-fullscreen-active .view:not(#view-overlay) {
 
 .trace-mode .compare-frame {
   outline-color: rgba(22, 125, 127, 0.8);
+}
+
+#view-overlay.overlay-fullscreen .compare-frame {
+  outline: 0;
+}
+
+#view-overlay.overlay-fullscreen .overlay-handle {
+  display: none;
 }
 
 .overlay-handle {

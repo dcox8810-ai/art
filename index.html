@@ -2,14 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>Portrait Practice Tracker</title>
     <meta name="theme-color" content="#167d7f" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Studio Log" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=7" />
+    <link rel="stylesheet" href="styles.css?v=8" />
   </head>
   <body>
     <main class="app-shell">
@@ -216,8 +216,8 @@
           </label>
           <button class="primary slim" type="button" id="newProjectButton">New artwork</button>
         </div>
-        <section class="panel backup-tools">
-          <h2>Backup</h2>
+        <details class="backup-tools">
+          <summary>Backup & import</summary>
           <div class="backup-actions">
             <button class="secondary" type="button" id="exportBackupButton">Export backup</button>
             <label class="secondary import-button">
@@ -233,7 +233,7 @@
             </select>
           </label>
           <p class="helper" id="backupStatus">Imports never delete existing artworks.</p>
-        </section>
+        </details>
         <div id="projectList" class="project-list" aria-live="polite"></div>
       </section>
 
@@ -260,6 +260,7 @@
       <section class="view" id="view-overlay" aria-labelledby="tab-overlay">
         <div class="panel overlay-picker">
           <button class="primary slim" type="button" id="toggleOverlayFullscreenButton">Full screen overlay</button>
+          <button class="secondary slim" type="button" id="exportOverlayButton">Export image</button>
           <label>
             Artwork
             <select id="overlayArtwork"></select>
@@ -285,6 +286,10 @@
             <button class="overlay-handle rotate-handle rotate-bottom" type="button" data-action="rotate" aria-label="Rotate overlay from bottom"></button>
           </div>
         </section>
+        <div class="fullscreen-actions" aria-label="Overlay actions">
+          <button type="button" id="exportOverlayFullscreenButton" aria-label="Export overlay image">↓</button>
+          <button type="button" id="exitOverlayFullscreenButton" aria-label="Exit full screen">×</button>
+        </div>
 
         <div class="panel controls">
           <label class="toggle-row"><input id="traceToggle" type="checkbox" checked /> Trace reference lines</label>
@@ -344,7 +349,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=7"></script>
+    <script src="app.js?v=8"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");
