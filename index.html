@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-title" content="Studio Log" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=9" />
+    <link rel="stylesheet" href="styles.css?v=10" />
   </head>
   <body>
     <main class="app-shell">
@@ -226,7 +226,7 @@
           <button class="primary slim" type="button" id="newProjectButton">New artwork</button>
         </div>
         <details class="backup-tools">
-          <summary>Backup & import</summary>
+          <summary>Settings & backup</summary>
           <div class="backup-actions">
             <button class="secondary" type="button" id="exportBackupButton">Export backup</button>
             <label class="secondary import-button">
@@ -243,11 +243,44 @@
           </label>
           <p class="helper" id="backupStatus">Imports never delete existing artworks.</p>
         </details>
+        <section class="panel project-detail hidden" id="projectDetail" aria-live="polite">
+          <div class="project-detail-head">
+            <div class="project-detail-thumb" id="projectDetailThumb"></div>
+            <div>
+              <h2 id="projectDetailTitle">Select a project</h2>
+              <p id="projectDetailMeta" class="helper">Your projects and notes will appear here.</p>
+            </div>
+          </div>
+          <div class="project-detail-actions">
+            <button class="primary slim" type="button" id="projectDetailUpdateButton">Update progress</button>
+            <button class="secondary slim" type="button" id="projectDetailOverlayButton">Open overlay</button>
+            <button class="secondary slim" type="button" id="projectDetailDuplicateButton">Duplicate</button>
+            <button class="secondary slim" type="button" id="projectDetailDeleteButton">Delete</button>
+          </div>
+          <div class="project-detail-grid">
+            <div>
+              <h3>Images</h3>
+              <div id="projectDetailGallery" class="project-detail-gallery"></div>
+            </div>
+            <div>
+              <h3>Sessions</h3>
+              <div id="projectDetailSessions" class="project-detail-sessions"></div>
+            </div>
+            <div>
+              <h3>Notes</h3>
+              <p id="projectDetailNotes" class="project-detail-notes"></p>
+            </div>
+          </div>
+        </section>
         <div id="projectList" class="project-list" aria-live="polite"></div>
       </section>
 
       <section class="view" id="view-stats" aria-labelledby="tab-stats">
         <div class="stats-grid" id="statsGrid"></div>
+        <section class="panel stats-insight">
+          <h2>Overview</h2>
+          <p id="statsInsight" class="stats-insight-text"></p>
+        </section>
         <section class="panel">
           <h2>Trend</h2>
           <div id="trendChart" class="trend-chart"></div>
@@ -261,8 +294,12 @@
           <div id="calendarHeatmap" class="heatmap"></div>
         </section>
         <section class="panel">
-          <h2>Breakdown</h2>
+          <h2>By Medium</h2>
           <div id="breakdownList" class="breakdown"></div>
+        </section>
+        <section class="panel">
+          <h2>By Subject</h2>
+          <div id="subjectBreakdownList" class="breakdown"></div>
         </section>
       </section>
 
@@ -304,6 +341,7 @@
         <div class="panel controls">
           <label class="toggle-row"><input id="traceToggle" type="checkbox" checked /> Trace reference lines</label>
           <label>Trace detail <input id="traceThresholdControl" type="range" min="15" max="90" value="38" /></label>
+          <label class="toggle-row"><input id="overlayLockToggle" type="checkbox" /> Lock overlay</label>
           <fieldset class="color-field">
             <legend>Trace color</legend>
             <label style="--swatch:#c4514a"><input type="radio" name="traceColor" value="#c4514a" /><span>Red</span></label>
@@ -361,7 +399,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=9"></script>
+    <script src="app.js?v=10"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");

@@ -9,11 +9,13 @@ const state = {
   uploadStages: [],
   draftSessions: [],
   editingId: null,
+  selectedProjectId: null,
   stageFilterTouched: false,
   reviewItems: [],
   reviewIndex: 0,
   reviewZoom: { scale: 1, x: 0, y: 0 },
   overlayHistory: [],
+  overlayLocked: false,
   traceColor: DEFAULT_TRACE_COLOR,
   overlay: { ...DEFAULT_OVERLAY },
 };
@@ -75,15 +77,28 @@ function bindElements() {
     searchFilter: document.querySelector("#searchFilter"),
     projectSearch: document.querySelector("#projectSearch"),
     projectList: document.querySelector("#projectList"),
+    projectDetail: document.querySelector("#projectDetail"),
+    projectDetailThumb: document.querySelector("#projectDetailThumb"),
+    projectDetailTitle: document.querySelector("#projectDetailTitle"),
+    projectDetailMeta: document.querySelector("#projectDetailMeta"),
+    projectDetailGallery: document.querySelector("#projectDetailGallery"),
+    projectDetailSessions: document.querySelector("#projectDetailSessions"),
+    projectDetailNotes: document.querySelector("#projectDetailNotes"),
+    projectDetailUpdateButton: document.querySelector("#projectDetailUpdateButton"),
+    projectDetailOverlayButton: document.querySelector("#projectDetailOverlayButton"),
+    projectDetailDuplicateButton: document.querySelector("#projectDetailDuplicateButton"),
+    projectDetailDeleteButton: document.querySelector("#projectDetailDeleteButton"),
     newProjectButton: document.querySelector("#newProjectButton"),
     exportBackupButton: document.querySelector("#exportBackupButton"),
     importBackupInput: document.querySelector("#importBackupInput"),
     importModeSelect: document.querySelector("#importModeSelect"),
     backupStatus: document.querySelector("#backupStatus"),
     statsGrid: document.querySelector("#statsGrid"),
+    statsInsight: document.querySelector("#statsInsight"),
     trendChart: document.querySelector("#trendChart"),
     heatmap: document.querySelector("#calendarHeatmap"),
     breakdownList: document.querySelector("#breakdownList"),
+    subjectBreakdownList: document.querySelector("#subjectBreakdownList"),
     overlayArtwork: document.querySelector("#overlayArtwork"),
     overlayImage: document.querySelector("#overlayImage"),
     referenceLayer: document.querySelector("#referenceLayer"),
@@ -100,6 +115,7 @@ function bindElements() {
     resetOverlayButton: document.querySelector("#resetOverlayButton"),
     traceToggle: document.querySelector("#traceToggle"),
     traceThresholdControl: document.querySelector("#traceThresholdControl"),
+    overlayLockToggle: document.querySelector("#overlayLockToggle"),
     traceColorInputs: document.querySelectorAll("input[name='traceColor']"),
     overlayOpacityInputs: document.querySelectorAll("input[name='overlayOpacity']"),
     textSizeSelect: document.querySelector("#textSizeSelect"),
@@ -120,10 +136,17 @@ function loadUiPrefs() {
   const prefs = saved ? JSON.parse(saved) : {};
   applyTextSize(prefs.textSize || "default");
   if (els.textSizeSelect) els.textSizeSelect.value = prefs.textSize || "default";
+  state.overlayLocked = Boolean(prefs.overlayLocked);
+  if (els.overlayLockToggle) els.overlayLockToggle.checked = state.overlayLocked;
+  const overlayView = document.querySelector("#view-overlay");
+  if (overlayView) overlayView.classList.toggle("overlay-locked", state.overlayLocked);
 }
 
 function saveUiPrefs() {
-  localStorage.setItem(UI_PREFS_KEY, JSON.stringify({ textSize: els.textSizeSelect.value }));
+  localStorage.setItem(UI_PREFS_KEY, JSON.stringify({
+    textSize: els.textSizeSelect.value,
+    overlayLocked: state.overlayLocked,
+  }));
 }
 
 function saveData() {
@@ -258,6 +281,12 @@ function setupFilters() {
   });
 
   els.projectList.addEventListener("click", (event) => {
+    const updateButton = event.target.closest("[data-update-artwork-id]");
+    if (updateButton) {
+      loadArtworkForEditing(updateButton.dataset.updateArtworkId);
+      activateTab("log");
+      return;
+    }
     const deleteButton = event.target.closest("[data-delete-artwork-id]");
     if (deleteButton) {
       deleteArtwork(deleteButton.dataset.deleteArtworkId);
@@ -265,7 +294,41 @@ function setupFilters() {
     }
     const card = event.target.closest("[data-artwork-id]");
     if (!card) return;
-    loadArtworkForEditing(card.dataset.artworkId);
+    selectProject(card.dataset.artworkId);
+  });
+
+  els.projectDetailUpdateButton.addEventListener("click", () => {
+    const artwork = currentSelectedProject();
+    if (artwork) {
+      loadArtworkForEditing(artwork.id);
+      activateTab("log");
+    }
+  });
+  els.projectDetailOverlayButton.addEventListener("click", () => {
+    const artwork = currentSelectedProject();
+    if (!artwork) return;
+    selectOverlayArtworkById(artwork.id);
+    activateTab("overlay");
+  });
+  els.projectDetailDuplicateButton.addEventListener("click", () => {
+    const artwork = currentSelectedProject();
+    if (artwork) duplicateArtwork(artwork.id);
+  });
+  els.projectDetailDeleteButton.addEventListener("click", () => {
+    const artwork = currentSelectedProject();
+    if (artwork) deleteArtwork(artwork.id);
+  });
+  els.projectDetailGallery.addEventListener("click", (event) => {
+    const chip = event.target.closest("[data-image-name]");
+    if (!chip) return;
+    const artwork = currentSelectedProject();
+    if (!artwork) return;
+    selectOverlayArtworkById(artwork.id);
+    const imageName = chip.dataset.imageName;
+    const index = artwork.images.filter((image) => image.name !== "Reference" && image.dataUrl).findIndex((image) => image.name === imageName);
+    if (index >= 0) els.overlayImage.value = String(index);
+    renderOverlayImages();
+    activateTab("overlay");
   });
 
   els.prevImageButton.addEventListener("click", () => stepReview(-1));
@@ -303,6 +366,13 @@ function setupOverlay() {
   });
   els.traceToggle.addEventListener("change", applyOverlayMode);
   els.traceThresholdControl.addEventListener("input", renderReferenceTrace);
+  if (els.overlayLockToggle) {
+    els.overlayLockToggle.addEventListener("change", () => {
+      state.overlayLocked = els.overlayLockToggle.checked;
+      document.querySelector("#view-overlay").classList.toggle("overlay-locked", state.overlayLocked);
+      saveUiPrefs();
+    });
+  }
   toArray(els.traceColorInputs).forEach((input) => {
     input.addEventListener("change", () => {
       state.traceColor = input.value;
@@ -334,6 +404,7 @@ function setupOverlay() {
   const pointers = new Map();
   let gesture = null;
   els.compareFrame.addEventListener("pointerdown", (event) => {
+    if (state.overlayLocked) return;
     event.preventDefault();
     pushOverlayHistory();
     pointers.set(event.pointerId, pointerPoint(event));
@@ -377,6 +448,7 @@ function renderAll() {
   renderProjects();
   renderStats();
   renderOverlaySelectors();
+  renderSelectedProject();
 }
 
 function renderUploadStages() {
@@ -610,24 +682,108 @@ function renderProjects() {
   els.projectList.innerHTML = projects.length
     ? projects.map(projectCard).join("")
     : `<div class="panel empty-state">No projects yet. Start one from the Log tab.</div>`;
+
+  if (!state.selectedProjectId && projects.length) {
+    state.selectedProjectId = projects[0].id;
+  }
+  renderSelectedProject();
 }
 
 function projectCard(artwork) {
   const thumb = firstImage(artwork);
+  const lastSession = artwork.sessions[artwork.sessions.length - 1];
+  const stageLabel = thumb ? thumb.name : "No image yet";
   return `
     <article class="project-card">
-      <button class="project-open" type="button" data-artwork-id="${artwork.id}" aria-label="Update ${escapeHtml(artwork.title)}">
-      ${thumb ? `<img src="${thumb.dataUrl}" alt="">` : `<span class="project-placeholder">No image</span>`}
-      <div>
-        <strong>${escapeHtml(artwork.title || "Untitled artwork")}</strong>
-        <span>${escapeHtml(artwork.medium || "Medium open")} · ${escapeHtml(artwork.subject || "Subject open")}</span>
-        <span>${artwork.minutes} min · ${artwork.images.filter((image) => image.dataUrl).length} images</span>
-      </div>
-      <b>Update</b>
+      <button class="project-open" type="button" data-artwork-id="${artwork.id}" aria-label="Open ${escapeHtml(artwork.title)}">
+        ${thumb ? `<img src="${thumb.dataUrl}" alt="">` : `<span class="project-placeholder">No image</span>`}
+        <div>
+          <strong>${escapeHtml(artwork.title || "Untitled artwork")}</strong>
+          <span>${escapeHtml(stageLabel)} · ${escapeHtml(artwork.medium || "Medium open")}</span>
+          <span>${artwork.minutes} min · ${artwork.images.filter((image) => image.dataUrl).length} images</span>
+          <span>${lastSession ? `Last session ${escapeHtml(lastSession.date)} · ${lastSession.minutes} min` : "No sessions yet"}</span>
+        </div>
+        <b>${state.selectedProjectId === artwork.id ? "Selected" : "Details"}</b>
       </button>
-      <button class="delete-project" type="button" data-delete-artwork-id="${artwork.id}" aria-label="Delete ${escapeHtml(artwork.title)}">Delete</button>
+      <div class="project-card-actions">
+        <button class="secondary compact" type="button" data-update-artwork-id="${artwork.id}">Update progress</button>
+        <button class="delete-project" type="button" data-delete-artwork-id="${artwork.id}" aria-label="Delete ${escapeHtml(artwork.title)}">Delete</button>
+      </div>
     </article>
   `;
+}
+
+function selectProject(id) {
+  state.selectedProjectId = id;
+  renderSelectedProject();
+}
+
+function currentSelectedProject() {
+  return state.artworks.find((artwork) => artwork.id === state.selectedProjectId) || state.artworks[0] || null;
+}
+
+function renderSelectedProject() {
+  const artwork = currentSelectedProject();
+  if (!artwork || !els.projectDetail) {
+    if (els.projectDetail) els.projectDetail.classList.add("hidden");
+    return;
+  }
+  els.projectDetail.classList.remove("hidden");
+  els.projectDetailTitle.textContent = artwork.title || "Untitled artwork";
+  els.projectDetailMeta.textContent = [
+    artwork.medium || "Medium open",
+    artwork.surface || "Surface open",
+    artwork.size || "Size open",
+    artwork.subject || "Subject open",
+    `${artwork.minutes || 0} min`,
+    `${artwork.overallRating ? `${artwork.overallRating}★` : "Unrated"}`,
+  ].join(" · ");
+  const thumb = preferredProjectImage(artwork);
+  els.projectDetailThumb.innerHTML = thumb
+    ? `<img src="${thumb.dataUrl}" alt="${escapeHtml(thumb.name)} for ${escapeHtml(artwork.title || "Untitled artwork")}">`
+    : `<div class="project-placeholder">No image</div>`;
+  els.projectDetailNotes.textContent = artwork.notes || "No notes yet.";
+  els.projectDetailGallery.innerHTML = artwork.images.length
+    ? artwork.images.map((image) => `
+      <button class="project-image-chip" type="button" data-image-name="${escapeHtml(image.name)}">
+        ${image.dataUrl ? `<img src="${image.dataUrl}" alt="">` : `<div class="project-image-empty">No image</div>`}
+        <span>${escapeHtml(image.name)}</span>
+        <strong>${stars(image.rating)}</strong>
+      </button>
+    `).join("")
+    : `<p class="helper">No images yet.</p>`;
+  els.projectDetailSessions.innerHTML = artwork.sessions.length
+    ? artwork.sessions.map((session) => `<div class="detail-session"><span>${escapeHtml(session.date)}</span><strong>${session.minutes} min</strong></div>`).join("")
+    : `<p class="helper">No time logged yet.</p>`;
+  state.selectedProjectId = artwork.id;
+}
+
+function selectOverlayArtworkById(id) {
+  if (!els.overlayArtwork) return;
+  els.overlayArtwork.value = id;
+  renderOverlayImageOptions();
+  renderOverlayImages();
+}
+
+function duplicateArtwork(id) {
+  const artwork = state.artworks.find((item) => item.id === id);
+  if (!artwork) return;
+  const clone = {
+    ...structuredCloneArtwork(artwork),
+    id: createId(),
+    title: `${artwork.title || "Untitled artwork"} copy`,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  state.artworks.unshift(clone);
+  state.selectedProjectId = clone.id;
+  saveData();
+  renderAll();
+  activateTab("projects");
+}
+
+function structuredCloneArtwork(artwork) {
+  return JSON.parse(JSON.stringify(artwork));
 }
 
 function deleteArtwork(id) {
@@ -637,6 +793,7 @@ function deleteArtwork(id) {
   if (!confirmed) return;
   state.artworks = state.artworks.filter((item) => item.id !== id);
   if (state.editingId === id) resetForm();
+  if (state.selectedProjectId === id) state.selectedProjectId = state.artworks[0] ? state.artworks[0].id : null;
   saveData();
   renderAll();
   activateTab("projects");
@@ -756,17 +913,36 @@ function renderStats() {
   const practiceDays = new Set(practiceDates).size;
   const finished = state.artworks.filter((art) => art.images.some((image) => image.name === "Final artwork" && image.dataUrl)).length;
   const averageRating = average(state.artworks.map((art) => art.overallRating).filter(Boolean));
+  const avgMinutesPerPiece = state.artworks.length ? totalMinutes / state.artworks.length : 0;
+  const streak = practiceStreak(practiceDates);
+  const topMedium = topGroupLabel("medium");
+  const topSubject = topGroupLabel("subject");
 
   els.statsGrid.innerHTML = [
     statCard(Math.round(totalMinutes / 60), "hours"),
+    statCard(Math.round(avgMinutesPerPiece), "avg min / piece"),
     statCard(practiceDays, "practice days"),
     statCard(finished, "finished pieces"),
     statCard(averageRating ? averageRating.toFixed(1) : "—", "avg rating"),
+    statCard(streak, "day streak"),
   ].join("");
+
+  if (els.statsInsight) {
+    let message = "Add a few projects and the app will start showing useful patterns here.";
+    if (state.artworks.length) {
+      const focus = topMedium !== "Unspecified" ? topMedium : topSubject;
+      const pieces = state.artworks.length;
+      const streakText = streak ? ` You are on a ${streak}-day practice streak.` : "";
+      const focusText = focus !== "Unspecified" ? ` ${focus} is your most worked category.` : "";
+      message = `You have logged ${Math.round(totalMinutes / 60)} hours across ${pieces} pieces.${focusText}${streakText}`;
+    }
+    els.statsInsight.textContent = message;
+  }
 
   renderHeatmap();
   renderTrend();
   renderBreakdown();
+  renderSubjectBreakdown();
 }
 
 function statCard(value, label) {
@@ -839,16 +1015,44 @@ function renderTrend() {
 }
 
 function renderBreakdown() {
-  const byMedium = groupMinutes("medium");
-  const mediumValues = objectValues(byMedium);
-  const max = Math.max.apply(null, [1].concat(mediumValues));
-  els.breakdownList.innerHTML = objectEntries(byMedium)
+  renderBarBreakdown(els.breakdownList, groupMinutes("medium"));
+}
+
+function renderSubjectBreakdown() {
+  renderBarBreakdown(els.subjectBreakdownList, groupMinutes("subject"));
+}
+
+function renderBarBreakdown(target, groups) {
+  if (!target) return;
+  const values = objectValues(groups);
+  const max = Math.max.apply(null, [1].concat(values));
+  target.innerHTML = objectEntries(groups)
     .sort((a, b) => b[1] - a[1])
     .map(([label, minutes]) => {
       const width = Math.round((minutes / max) * 100);
       return `<div class="bar-row"><span>${escapeHtml(label)}</span><div class="bar"><span style="width:${width}%"></span></div><strong>${minutes}</strong></div>`;
     })
     .join("");
+}
+
+function topGroupLabel(key) {
+  const groups = groupMinutes(key);
+  const [label] = objectEntries(groups).sort((a, b) => b[1] - a[1])[0] || [];
+  return label || "Unspecified";
+}
+
+function practiceStreak(dates) {
+  if (!dates.length) return 0;
+  const unique = [...new Set(dates)].sort();
+  let streak = 1;
+  for (let i = unique.length - 1; i > 0; i -= 1) {
+    const current = new Date(unique[i]);
+    const previous = new Date(unique[i - 1]);
+    const diff = (current - previous) / (1000 * 60 * 60 * 24);
+    if (diff <= 1.01) streak += 1;
+    else break;
+  }
+  return streak;
 }
 
 function groupMinutes(key) {
@@ -1363,6 +1567,7 @@ function resetForm() {
 function loadArtworkForEditing(id) {
   const artwork = state.artworks.find((item) => item.id === id);
   if (!artwork) return;
+  state.selectedProjectId = id;
   state.editingId = id;
   els.formTitle.textContent = "Artwork Details";
   els.saveArtworkButton.textContent = "Save changes";

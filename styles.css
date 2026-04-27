@@ -551,6 +551,123 @@ textarea {
   gap: 10px;
 }
 
+.project-detail {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.project-detail-head {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.project-detail-thumb {
+  width: 84px;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(22, 125, 127, 0.08);
+}
+
+.project-detail-thumb img,
+.project-image-chip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.project-detail-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.project-card-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.project-detail-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.project-detail-grid h3 {
+  margin: 0 0 8px;
+  font-size: 0.86rem;
+}
+
+.project-detail-gallery {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.project-image-chip {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.project-image-chip img {
+  aspect-ratio: 1 / 1.2;
+  border-radius: 6px;
+  background: #e9e3dc;
+}
+
+.project-image-empty {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1 / 1.2;
+  border-radius: 6px;
+  background: rgba(22, 125, 127, 0.08);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.project-image-chip span,
+.project-image-chip strong {
+  display: block;
+  font-size: 0.74rem;
+}
+
+.project-detail-sessions {
+  display: grid;
+  gap: 8px;
+}
+
+.detail-session {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 9px;
+  background: #fff;
+  font-size: 0.8rem;
+}
+
+.project-detail-notes {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(22, 125, 127, 0.06);
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
 .project-card {
   display: grid;
   gap: 8px;
@@ -614,6 +731,16 @@ textarea {
   grid-template-columns: 1fr 1fr;
   gap: 10px;
   margin-bottom: 14px;
+}
+
+.stats-insight {
+  margin-bottom: 14px;
+}
+
+.stats-insight-text {
+  margin: 0;
+  color: var(--ink);
+  line-height: 1.5;
 }
 
 .trend-chart svg {
@@ -775,6 +902,19 @@ textarea {
   background-position: 0 0, 0 10px, 10px -10px, -10px 0;
   background-size: 20px 20px;
   touch-action: none;
+}
+
+.overlay-locked .compare-frame {
+  cursor: default;
+}
+
+.overlay-locked .overlay-handle {
+  opacity: 0.22;
+  pointer-events: none;
+}
+
+.overlay-locked .move-handle {
+  background: #9db6b7;
 }
 
 body.overlay-fullscreen-active {
