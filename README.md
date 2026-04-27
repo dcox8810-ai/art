@@ -15,4 +15,13 @@ This is a static app: HTML, CSS, JavaScript, manifest, icon, and service worker.
 
 On iPhone, open the Pages URL in Safari and choose Share > Add to Home Screen.
 
+## Data And Backups
+
 Data is stored in the browser on each device, so data entered on localhost will not automatically move to the hosted GitHub Pages URL.
+
+Use Projects > Backup > Export backup to download a JSON copy of the current artworks, time logs, metadata, ratings, and stored images. Import backup has two modes:
+
+- Add new only: imports artworks whose IDs are not already on this device.
+- Add new and update matches: adds new artworks and replaces matching IDs with the imported version.
+
+Imports never delete existing local artworks that are missing from the backup file.

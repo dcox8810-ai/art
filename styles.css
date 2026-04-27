@@ -450,6 +450,28 @@ textarea {
   margin-bottom: 12px;
 }
 
+.backup-tools {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.backup-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.import-button {
+  display: grid;
+  place-items: center;
+  text-align: center;
+}
+
+.import-button input {
+  display: none;
+}
+
 .project-list {
   display: grid;
   gap: 10px;
@@ -679,6 +701,57 @@ textarea {
   background-position: 0 0, 0 10px, 10px -10px, -10px 0;
   background-size: 20px 20px;
   touch-action: none;
+}
+
+body.overlay-fullscreen-active {
+  overflow: hidden;
+}
+
+body.overlay-fullscreen-active .topbar,
+body.overlay-fullscreen-active .tabbar,
+body.overlay-fullscreen-active .view:not(#view-overlay) {
+  display: none;
+}
+
+#view-overlay.overlay-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  grid-template-rows: auto minmax(320px, 1fr) minmax(0, auto);
+  gap: 10px;
+  overflow: auto;
+  padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  background: var(--paper);
+}
+
+#view-overlay.overlay-fullscreen .overlay-picker {
+  grid-template-columns: 1fr;
+  margin-bottom: 0;
+}
+
+#view-overlay.overlay-fullscreen .overlay-stage {
+  height: auto;
+  min-height: min(62vh, 680px);
+}
+
+#view-overlay.overlay-fullscreen .controls {
+  margin-top: 0;
+  max-height: 34vh;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+#view-overlay.overlay-fullscreen .color-field,
+#view-overlay.overlay-fullscreen .opacity-field {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+#view-overlay.overlay-fullscreen .color-field label,
+#view-overlay.overlay-fullscreen .opacity-field label {
+  min-height: 34px;
+  padding-top: 7px;
+  padding-bottom: 7px;
 }
 
 .overlay-stage img {

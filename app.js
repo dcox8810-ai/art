@@ -6,6 +6,7 @@ const state = {
   uploadStages: [],
   draftSessions: [],
   editingId: null,
+  stageFilterTouched: false,
   reviewItems: [],
   reviewIndex: 0,
   traceColor: "#c4514a",
@@ -67,6 +68,10 @@ function bindElements() {
     projectSearch: document.querySelector("#projectSearch"),
     projectList: document.querySelector("#projectList"),
     newProjectButton: document.querySelector("#newProjectButton"),
+    exportBackupButton: document.querySelector("#exportBackupButton"),
+    importBackupInput: document.querySelector("#importBackupInput"),
+    importModeSelect: document.querySelector("#importModeSelect"),
+    backupStatus: document.querySelector("#backupStatus"),
     statsGrid: document.querySelector("#statsGrid"),
     trendChart: document.querySelector("#trendChart"),
     heatmap: document.querySelector("#calendarHeatmap"),
@@ -79,7 +84,7 @@ function bindElements() {
     tracePhotoLayer: document.querySelector("#tracePhotoLayer"),
     traceCanvas: document.querySelector("#traceCanvas"),
     overlayStage: document.querySelector("#overlayStage"),
-    opacityControl: document.querySelector("#opacityControl"),
+    toggleOverlayFullscreenButton: document.querySelector("#toggleOverlayFullscreenButton"),
     resetOverlayButton: document.querySelector("#resetOverlayButton"),
     traceToggle: document.querySelector("#traceToggle"),
     traceThresholdControl: document.querySelector("#traceThresholdControl"),
@@ -148,6 +153,8 @@ function setupForm() {
     resetForm();
     activateTab("log");
   });
+  els.exportBackupButton.addEventListener("click", exportBackup);
+  els.importBackupInput.addEventListener("change", importBackup);
 
   els.form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -201,7 +208,11 @@ function setupCustomSelect(select, wrap) {
 }
 
 function setupFilters() {
-  [els.stageFilter, els.ratingFilter, els.sortFilter, els.searchFilter].forEach((control) => {
+  els.stageFilter.addEventListener("input", () => {
+    state.stageFilterTouched = true;
+    renderReview();
+  });
+  [els.ratingFilter, els.sortFilter, els.searchFilter].forEach((control) => {
     control.addEventListener("input", renderReview);
   });
   els.projectSearch.addEventListener("input", renderProjects);
@@ -236,6 +247,7 @@ function setupFilters() {
 }
 
 function setupOverlay() {
+  els.toggleOverlayFullscreenButton.addEventListener("click", toggleOverlayFullscreen);
   els.overlayArtwork.addEventListener("change", () => {
     renderOverlayImageOptions();
     renderOverlayImages();
@@ -295,6 +307,17 @@ function setupOverlay() {
   els.compareFrame.addEventListener("lostpointercapture", () => {
     dragAction = "";
   });
+}
+
+function toggleOverlayFullscreen() {
+  const view = document.querySelector("#view-overlay");
+  const isFullscreen = view.classList.toggle("overlay-fullscreen");
+  document.body.classList.toggle("overlay-fullscreen-active", isFullscreen);
+  els.toggleOverlayFullscreenButton.textContent = isFullscreen ? "Exit full screen" : "Full screen overlay";
+  setTimeout(() => {
+    clampOverlayToStage();
+    applyOverlayTransform();
+  }, 0);
 }
 
 function renderAll() {
@@ -382,9 +405,18 @@ function totalMinutes(sessions) {
 }
 
 function renderStageFilter() {
+  const previous = els.stageFilter.value;
   const stages = new Set(["All images"]);
   state.artworks.forEach((artwork) => artwork.images.forEach((image) => stages.add(image.name)));
-  els.stageFilter.innerHTML = [...stages].map((stage) => `<option>${escapeHtml(stage)}</option>`).join("");
+  const stageList = [...stages];
+  els.stageFilter.innerHTML = stageList.map((stage) => `<option>${escapeHtml(stage)}</option>`).join("");
+  if (!state.stageFilterTouched && stageList.includes("Final artwork")) {
+    els.stageFilter.value = "Final artwork";
+  } else if (stageList.includes(previous)) {
+    els.stageFilter.value = previous;
+  } else if (stageList.includes("Final artwork")) {
+    els.stageFilter.value = "Final artwork";
+  }
 }
 
 function renderReview() {
@@ -489,6 +521,86 @@ function deleteArtwork(id) {
   saveData();
   renderAll();
   activateTab("projects");
+}
+
+function exportBackup() {
+  const backup = {
+    app: "studio-log",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    artworks: state.artworks,
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const date = new Date().toISOString().slice(0, 10);
+  link.href = url;
+  link.download = `studio-log-backup-${date}.json`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  els.backupStatus.textContent = `Exported ${state.artworks.length} artworks.`;
+}
+
+async function importBackup(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  try {
+    const text = await readFileAsText(file);
+    const parsed = JSON.parse(text);
+    const incoming = Array.isArray(parsed) ? parsed : parsed.artworks;
+    if (!Array.isArray(incoming)) throw new Error("Backup file does not contain artworks.");
+    const normalized = normalizeArtworks(incoming);
+    const mode = els.importModeSelect.value;
+    const summary = mergeImportedArtworks(normalized, mode);
+    const message = mode === "add-only"
+      ? `Import ${summary.added} new artworks and skip ${summary.skipped} existing ones?`
+      : `Import ${summary.added} new artworks and update ${summary.updated} existing ones? Nothing will be deleted.`;
+    if (!window.confirm(message)) return;
+    state.artworks = summary.nextArtworks;
+    saveData();
+    renderAll();
+    activateTab("projects");
+    els.backupStatus.textContent = `Imported: ${summary.added} added, ${summary.updated} updated, ${summary.skipped} skipped.`;
+  } catch (error) {
+    els.backupStatus.textContent = `Import failed: ${error.message}`;
+  } finally {
+    event.target.value = "";
+  }
+}
+
+function mergeImportedArtworks(incoming, mode) {
+  const existingById = {};
+  state.artworks.forEach((artwork) => {
+    existingById[artwork.id] = artwork;
+  });
+  const nextById = { ...existingById };
+  let added = 0;
+  let updated = 0;
+  let skipped = 0;
+
+  incoming.forEach((artwork) => {
+    if (!artwork.id) artwork.id = createId();
+    if (!nextById[artwork.id]) {
+      nextById[artwork.id] = artwork;
+      added += 1;
+      return;
+    }
+    if (mode === "merge-update") {
+      nextById[artwork.id] = artwork;
+      updated += 1;
+    } else {
+      skipped += 1;
+    }
+  });
+
+  return {
+    added,
+    updated,
+    skipped,
+    nextArtworks: objectValues(nextById).sort((a, b) => new Date(b.updatedAt || b.createdAt || b.date) - new Date(a.updatedAt || a.createdAt || a.date)),
+  };
 }
 
 function firstImage(artwork) {
@@ -783,18 +895,23 @@ function resizeOverlayFromCorner(action, start, dx, dy) {
   const delta = Math.abs(horizontal) > Math.abs(vertical) ? horizontal : vertical;
   const aspect = start.height / start.width;
   const stageRect = els.overlayStage.getBoundingClientRect();
-  const maxWidth = Math.max(160, stageRect.width - 52);
+  const maxWidth = Math.max(360, stageRect.width * 2.25);
   const minWidth = 120;
   const nextWidth = clamp(start.width + delta, minWidth, maxWidth);
+  const widthDelta = nextWidth - start.width;
   state.overlay.width = nextWidth;
   state.overlay.height = Math.round(nextWidth * aspect);
+  const xDirection = action.endsWith("e") ? 1 : -1;
+  const yDirection = action.indexOf("s") > -1 ? 1 : -1;
+  state.overlay.x = start.x + (widthDelta / 2) * xDirection;
+  state.overlay.y = start.y + ((state.overlay.height - start.height) / 2) * yDirection;
 }
 
 function clampOverlayToStage() {
   const stageRect = els.overlayStage.getBoundingClientRect();
   if (!stageRect.width || !stageRect.height) return;
-  const maxWidth = Math.max(160, stageRect.width - 52);
-  const maxHeight = Math.max(190, stageRect.height - 52);
+  const maxWidth = Math.max(360, stageRect.width * 2.25);
+  const maxHeight = Math.max(450, stageRect.height * 2.25);
   if (state.overlay.width > maxWidth) {
     state.overlay.width = maxWidth;
     state.overlay.height = Math.round(maxWidth * 1.25);
@@ -805,8 +922,13 @@ function clampOverlayToStage() {
   }
   const halfWidth = state.overlay.width / 2;
   const halfHeight = state.overlay.height / 2;
-  const maxX = Math.max(0, stageRect.width / 2 - halfWidth - 18);
-  const maxY = Math.max(0, stageRect.height / 2 - halfHeight - 18);
+  const edgePad = 34;
+  const maxX = halfWidth <= stageRect.width / 2
+    ? Math.max(0, stageRect.width / 2 - halfWidth - 18)
+    : Math.max(0, halfWidth - stageRect.width / 2 + edgePad);
+  const maxY = halfHeight <= stageRect.height / 2
+    ? Math.max(0, stageRect.height / 2 - halfHeight - 18)
+    : Math.max(0, halfHeight - stageRect.height / 2 + edgePad);
   state.overlay.x = clamp(state.overlay.x, -maxX, maxX);
   state.overlay.y = clamp(state.overlay.y, -maxY, maxY);
 }
@@ -888,6 +1010,15 @@ function readFileAsDataUrl(file) {
     reader.onload = () => resolve(reader.result);
     reader.onerror = reject;
     reader.readAsDataURL(file);
+  });
+}
+
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsText(file);
   });
 }
 

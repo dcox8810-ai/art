@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-title" content="Studio Log" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=4" />
+    <link rel="stylesheet" href="styles.css?v=5" />
   </head>
   <body>
     <main class="app-shell">
@@ -216,6 +216,24 @@
           </label>
           <button class="primary slim" type="button" id="newProjectButton">New artwork</button>
         </div>
+        <section class="panel backup-tools">
+          <h2>Backup</h2>
+          <div class="backup-actions">
+            <button class="secondary" type="button" id="exportBackupButton">Export backup</button>
+            <label class="secondary import-button">
+              Import backup
+              <input id="importBackupInput" type="file" accept="application/json,.json" />
+            </label>
+          </div>
+          <label>
+            Import mode
+            <select id="importModeSelect">
+              <option value="add-only">Add new only</option>
+              <option value="merge-update">Add new and update matches</option>
+            </select>
+          </label>
+          <p class="helper" id="backupStatus">Imports never delete existing artworks.</p>
+        </section>
         <div id="projectList" class="project-list" aria-live="polite"></div>
       </section>
 
@@ -241,6 +259,7 @@
 
       <section class="view" id="view-overlay" aria-labelledby="tab-overlay">
         <div class="panel overlay-picker">
+          <button class="primary slim" type="button" id="toggleOverlayFullscreenButton">Full screen overlay</button>
           <label>
             Artwork
             <select id="overlayArtwork"></select>
@@ -268,7 +287,6 @@
 
         <div class="panel controls">
           <label class="toggle-row"><input id="traceToggle" type="checkbox" checked /> Trace reference lines</label>
-          <label>Opacity <input id="opacityControl" type="range" min="0" max="100" value="75" /></label>
           <fieldset class="color-field">
             <legend>Trace color</legend>
             <label style="--swatch:#c4514a"><input type="radio" name="traceColor" value="#c4514a" checked /> Red</label>
@@ -324,7 +342,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=4"></script>
+    <script src="app.js?v=5"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");
