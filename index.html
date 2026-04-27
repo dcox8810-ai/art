@@ -9,23 +9,14 @@
     <meta name="apple-mobile-web-app-title" content="Studio Log" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=11" />
+    <link rel="stylesheet" href="styles.css?v=12" />
   </head>
   <body>
     <main class="app-shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Portrait Practice</p>
           <h1>Studio Log</h1>
         </div>
-        <label class="text-size-control">
-          Text size
-          <select id="textSizeSelect">
-            <option value="small">Small</option>
-            <option value="default" selected>Default</option>
-            <option value="large">Large</option>
-          </select>
-        </label>
       </header>
 
       <section class="view" id="view-log" aria-labelledby="tab-log">
@@ -203,7 +194,9 @@
             <button class="secondary compact" type="button" id="toggleReviewFullscreenButton">Full screen</button>
           </div>
           <div class="viewer-stage" id="viewerStage">
+            <button class="review-nav-zone review-nav-prev" type="button" data-review-step="-1" aria-label="Previous image">‹</button>
             <img id="viewerImage" alt="" />
+            <button class="review-nav-zone review-nav-next" type="button" data-review-step="1" aria-label="Next image">›</button>
           </div>
           <div class="viewer-meta">
             <div>
@@ -225,24 +218,6 @@
             <input id="projectSearch" placeholder="title, medium, subject..." />
           </div>
         </div>
-        <details class="backup-tools">
-          <summary>Settings & backup</summary>
-          <div class="backup-actions">
-            <button class="secondary" type="button" id="exportBackupButton">Export backup</button>
-            <label class="secondary import-button">
-              Import backup
-              <input id="importBackupInput" type="file" accept="application/json,.json" />
-            </label>
-          </div>
-          <label>
-            Import mode
-            <select id="importModeSelect">
-              <option value="add-only">Add new only</option>
-              <option value="merge-update">Add new and update matches</option>
-            </select>
-          </label>
-          <p class="helper" id="backupStatus">Imports never delete existing artworks.</p>
-        </details>
         <section class="panel project-detail hidden" id="projectDetail" aria-live="polite">
           <div class="project-detail-head">
             <div class="project-detail-thumb" id="projectDetailThumb"></div>
@@ -313,6 +288,38 @@
         </section>
       </section>
 
+      <section class="view" id="view-settings" aria-labelledby="tab-settings">
+        <section class="panel settings-panel">
+          <h2>Settings</h2>
+          <label class="text-size-control">
+            Text size
+            <select id="textSizeSelect">
+              <option value="small">Small</option>
+              <option value="default" selected>Default</option>
+              <option value="large">Large</option>
+            </select>
+          </label>
+        </section>
+        <section class="panel settings-panel">
+          <h2>Backup & Import</h2>
+          <div class="backup-actions">
+            <button class="secondary" type="button" id="exportBackupButton">Export backup</button>
+            <label class="secondary import-button">
+              Import backup
+              <input id="importBackupInput" type="file" accept="application/json,.json" />
+            </label>
+          </div>
+          <label>
+            Import mode
+            <select id="importModeSelect">
+              <option value="add-only">Add new only</option>
+              <option value="merge-update">Add new and update matches</option>
+            </select>
+          </label>
+          <p class="helper" id="backupStatus">Imports never delete existing artworks.</p>
+        </section>
+      </section>
+
       <section class="view" id="view-overlay" aria-labelledby="tab-overlay">
         <section class="overlay-stage" id="overlayStage">
           <div class="overlay-stage-toolbar">
@@ -358,12 +365,12 @@
           <label>Trace detail <input id="traceThresholdControl" type="range" min="15" max="90" value="38" /></label>
           <fieldset class="color-field">
             <legend>Trace color</legend>
-            <label style="--swatch:#c4514a"><input type="radio" name="traceColor" value="#c4514a" /><span>Red</span></label>
-            <label style="--swatch:#1d2433"><input type="radio" name="traceColor" value="#1d2433" /><span>Black</span></label>
+            <label style="--swatch:#ff3b30"><input type="radio" name="traceColor" value="#ff3b30" /><span>Red</span></label>
+            <label style="--swatch:#020617"><input type="radio" name="traceColor" value="#020617" /><span>Black</span></label>
             <label style="--swatch:#ffffff"><input type="radio" name="traceColor" value="#ffffff" checked /><span>White</span></label>
-            <label style="--swatch:#167d7f"><input type="radio" name="traceColor" value="#167d7f" /><span>Green</span></label>
-            <label style="--swatch:#c9952d"><input type="radio" name="traceColor" value="#c9952d" /><span>Gold</span></label>
-            <label style="--swatch:#5c5aa8"><input type="radio" name="traceColor" value="#5c5aa8" /><span>Blue</span></label>
+            <label style="--swatch:#00e676"><input type="radio" name="traceColor" value="#00e676" /><span>Green</span></label>
+            <label style="--swatch:#ffd60a"><input type="radio" name="traceColor" value="#ffd60a" /><span>Gold</span></label>
+            <label style="--swatch:#3b82ff"><input type="radio" name="traceColor" value="#3b82ff" /><span>Blue</span></label>
           </fieldset>
           <fieldset class="opacity-field">
             <legend>Overlay opacity</legend>
@@ -383,6 +390,7 @@
         <button class="tab hidden" id="tab-log" data-view="log">Log</button>
         <button class="tab" id="tab-review" data-view="review">Review</button>
         <button class="tab" id="tab-stats" data-view="stats">Stats</button>
+        <button class="tab" id="tab-settings" data-view="settings">Settings</button>
         <button class="tab hidden" id="tab-overlay" data-view="overlay">Overlay</button>
       </nav>
     </main>
@@ -413,7 +421,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=11"></script>
+    <script src="app.js?v=12"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");

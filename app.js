@@ -318,8 +318,29 @@ function setupFilters() {
     if (!card) return;
     openReviewViewer(Number(card.dataset.reviewIndex));
   });
+  els.viewerStage.addEventListener("click", (event) => {
+    const nav = event.target.closest("[data-review-step]");
+    if (!nav) return;
+    stepReview(Number(nav.dataset.reviewStep));
+  });
 
   els.projectList.addEventListener("click", (event) => {
+    const overlayButton = event.target.closest("[data-overlay-artwork-id]");
+    if (overlayButton) {
+      selectOverlayArtworkById(overlayButton.dataset.overlayArtworkId);
+      activateTab("overlay");
+      return;
+    }
+    const quickButton = event.target.closest("[data-quick-add-artwork-id]");
+    if (quickButton) {
+      const card = quickButton.closest("[data-project-card-id]");
+      const artwork = state.artworks.find((item) => item.id === quickButton.dataset.quickAddArtworkId);
+      const minutesInput = card ? card.querySelector("[data-quick-minutes]") : null;
+      const dateInput = card ? card.querySelector("[data-quick-date]") : null;
+      addSessionToArtwork(artwork, minutesInput ? minutesInput.value : "", dateInput ? dateInput.value : todayKey());
+      if (minutesInput) minutesInput.value = "";
+      return;
+    }
     const updateButton = event.target.closest("[data-update-artwork-id]");
     if (updateButton) {
       loadArtworkForEditing(updateButton.dataset.updateArtworkId);
@@ -331,9 +352,6 @@ function setupFilters() {
       deleteArtwork(deleteButton.dataset.deleteArtworkId);
       return;
     }
-    const card = event.target.closest("[data-artwork-id]");
-    if (!card) return;
-    selectProject(card.dataset.artworkId);
   });
   if (els.projectQuickAddButton) {
     els.projectQuickAddButton.addEventListener("click", () => {
@@ -524,7 +542,7 @@ function renderAll() {
   renderProjects();
   renderStats();
   renderOverlaySelectors();
-  renderSelectedProject();
+  if (els.projectDetail) els.projectDetail.classList.add("hidden");
 }
 
 function renderUploadStages() {
@@ -705,6 +723,7 @@ function setupReviewZoom() {
   });
 
   els.viewerStage.addEventListener("pointerdown", (event) => {
+    if (event.target.closest("[data-review-step]")) return;
     if (!state.reviewItems.length) return;
     event.preventDefault();
     pointers.set(event.pointerId, pointerPoint(event));
@@ -772,16 +791,17 @@ function renderProjects() {
   if (projects.length && !projects.some((project) => project.id === state.selectedProjectId)) {
     state.selectedProjectId = projects[0].id;
   }
-  renderSelectedProject();
+  if (els.projectDetail) els.projectDetail.classList.add("hidden");
 }
 
 function projectCard(artwork) {
   const thumb = firstImage(artwork);
   const lastSession = artwork.sessions[artwork.sessions.length - 1];
   const stageLabel = thumb ? thumb.name : "No image yet";
+  const safeId = escapeHtml(artwork.id);
   return `
-    <article class="project-card${state.selectedProjectId === artwork.id ? " selected" : ""}">
-      <button class="project-open" type="button" data-artwork-id="${artwork.id}" aria-label="Open ${escapeHtml(artwork.title)}">
+    <article class="project-card" data-project-card-id="${safeId}">
+      <div class="project-open">
         ${thumb ? `<img src="${thumb.dataUrl}" alt="">` : `<span class="project-placeholder">No image</span>`}
         <div>
           <strong>${escapeHtml(artwork.title || "Untitled artwork")}</strong>
@@ -789,11 +809,22 @@ function projectCard(artwork) {
           <span>${artwork.minutes} min · ${artwork.images.filter((image) => image.dataUrl).length} images</span>
           <span>${lastSession ? `Last session ${escapeHtml(lastSession.date)} · ${lastSession.minutes} min` : "No sessions yet"}</span>
         </div>
-        <b>${state.selectedProjectId === artwork.id ? "Selected" : "Details"}</b>
-      </button>
+      </div>
+      <div class="project-quick-log">
+        <label>
+          Date
+          <input data-quick-date type="date" value="${todayKey()}" />
+        </label>
+        <label>
+          Minutes
+          <input data-quick-minutes type="number" min="0" step="5" placeholder="30" />
+        </label>
+        <button class="primary compact-action" type="button" data-quick-add-artwork-id="${safeId}">Add time</button>
+      </div>
       <div class="project-card-actions">
-        <button class="secondary compact" type="button" data-update-artwork-id="${artwork.id}">Update progress</button>
-        <button class="delete-project" type="button" data-delete-artwork-id="${artwork.id}" aria-label="Delete ${escapeHtml(artwork.title)}">Delete</button>
+        <button class="secondary compact" type="button" data-overlay-artwork-id="${safeId}">Overlay</button>
+        <button class="secondary compact" type="button" data-update-artwork-id="${safeId}">Update</button>
+        <button class="delete-project" type="button" data-delete-artwork-id="${safeId}" aria-label="Delete ${escapeHtml(artwork.title)}">Delete</button>
       </div>
     </article>
   `;
@@ -1781,6 +1812,10 @@ function createId() {
     ? window.crypto.getRandomValues(new Uint32Array(2)).join("")
     : `${Math.random().toString(36).slice(2)}${Date.now()}`;
   return `id-${Date.now()}-${random}`;
+}
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function toArray(list) {
