@@ -25,3 +25,5 @@ Use Projects > Backup > Export backup to download a JSON copy of the current art
 - Add new and update matches: adds new artworks and replaces matching IDs with the imported version.
 
 Imports never delete existing local artworks that are missing from the backup file.
+
+Saved overlay positions are stored with each artwork and included in backup exports.

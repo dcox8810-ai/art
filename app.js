@@ -1,5 +1,6 @@
 const STORAGE_KEY = "portrait-practice-tracker-v1";
 const DEFAULT_STAGES = ["Reference", "Block-in", "30 mins", "Final artwork"];
+const DEFAULT_OVERLAY = { x: 0, y: 0, width: 280, height: 350, rotate: 0, opacity: 85 };
 
 const state = {
   artworks: [],
@@ -10,7 +11,7 @@ const state = {
   reviewItems: [],
   reviewIndex: 0,
   traceColor: "#c4514a",
-  overlay: { x: 0, y: 0, width: 280, height: 350, rotate: 0, opacity: 85 },
+  overlay: { ...DEFAULT_OVERLAY },
 };
 
 const els = {};
@@ -180,6 +181,7 @@ function setupForm() {
       subject,
       notes: data.get("notes"),
       images,
+      overlayPositions: state.editingId ? { ...(currentArtwork().overlayPositions || {}) } : {},
       createdAt: state.editingId ? currentArtwork().createdAt : new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -266,48 +268,40 @@ function setupOverlay() {
     input.addEventListener("change", () => {
       state.overlay.opacity = Number(input.value);
       applyOverlayTransform();
+      saveCurrentOverlayPosition();
     });
   });
 
   els.resetOverlayButton.addEventListener("click", () => {
-    state.overlay = { x: 0, y: 0, width: 280, height: 350, rotate: 0, opacity: 85 };
+    state.overlay = { ...DEFAULT_OVERLAY };
     syncOverlayControls();
     clampOverlayToStage();
     applyOverlayTransform();
+    saveCurrentOverlayPosition();
   });
 
-  let dragAction = "";
-  let start = null;
+  const pointers = new Map();
+  let gesture = null;
   els.compareFrame.addEventListener("pointerdown", (event) => {
     event.preventDefault();
-    const handle = event.target.closest("[data-action]");
-    dragAction = handle ? handle.dataset.action : "move";
-    start = {
-      pointerX: event.clientX,
-      pointerY: event.clientY,
-      x: state.overlay.x,
-      y: state.overlay.y,
-      width: state.overlay.width,
-      height: state.overlay.height,
-      rotate: state.overlay.rotate,
-    };
+    pointers.set(event.pointerId, pointerPoint(event));
+    gesture = startOverlayGesture(event, pointers);
     els.compareFrame.setPointerCapture(event.pointerId);
   });
   els.compareFrame.addEventListener("pointermove", (event) => {
-    if (!dragAction) return;
+    if (!pointers.has(event.pointerId) || !gesture) return;
     event.preventDefault();
-    updateOverlayFromDrag(event, dragAction, start);
+    pointers.set(event.pointerId, pointerPoint(event));
+    updateOverlayFromGesture(event, pointers, gesture);
     syncOverlayControls();
     applyOverlayTransform();
   });
-  els.compareFrame.addEventListener("pointerup", () => {
-    dragAction = "";
-  });
-  els.compareFrame.addEventListener("pointercancel", () => {
-    dragAction = "";
-  });
-  els.compareFrame.addEventListener("lostpointercapture", () => {
-    dragAction = "";
+  ["pointerup", "pointercancel", "lostpointercapture"].forEach((eventName) => {
+    els.compareFrame.addEventListener(eventName, (event) => {
+      pointers.delete(event.pointerId);
+      saveCurrentOverlayPosition();
+      gesture = pointers.size ? startOverlayGesture(event, pointers) : null;
+    });
   });
 }
 
@@ -770,6 +764,7 @@ function renderOverlayImages() {
   els.referenceLayer.src = reference ? reference.dataUrl : "";
   els.tracePhotoLayer.src = reference ? reference.dataUrl : "";
   els.artworkBaseLayer.src = compare ? compare.dataUrl : "";
+  loadOverlayPosition(artwork, compare);
   if (!reference) clearTrace();
   if (reference && els.referenceLayer.complete) renderReferenceTrace();
   clampOverlayToStage();
@@ -792,6 +787,47 @@ function applyOverlayTransform() {
   els.compareFrame.style.width = `${state.overlay.width}px`;
   els.compareFrame.style.height = `${state.overlay.height}px`;
   els.compareFrame.style.transform = `translate(calc(-50% + ${state.overlay.x}px), calc(-50% + ${state.overlay.y}px)) rotate(${state.overlay.rotate}deg)`;
+}
+
+function loadOverlayPosition(artwork, compareImage) {
+  const key = overlayPositionKey(compareImage);
+  const saved = key && artwork.overlayPositions ? artwork.overlayPositions[key] : null;
+  state.overlay = sanitizeOverlay(saved || DEFAULT_OVERLAY);
+  syncOverlayControls();
+}
+
+function saveCurrentOverlayPosition() {
+  const artwork = currentOverlayArtwork();
+  const compareImage = currentOverlayCompareImage();
+  const key = overlayPositionKey(compareImage);
+  if (!artwork || !key) return;
+  if (!artwork.overlayPositions) artwork.overlayPositions = {};
+  artwork.overlayPositions[key] = sanitizeOverlay(state.overlay);
+  artwork.updatedAt = new Date().toISOString();
+  saveData();
+}
+
+function currentOverlayCompareImage() {
+  const artwork = currentOverlayArtwork();
+  if (!artwork) return null;
+  const candidates = artwork.images.filter((image) => image.name !== "Reference" && image.dataUrl);
+  return candidates[Number(els.overlayImage.value)] || candidates[0] || null;
+}
+
+function overlayPositionKey(image) {
+  return image && image.name ? image.name : "";
+}
+
+function sanitizeOverlay(value) {
+  const overlay = { ...DEFAULT_OVERLAY, ...(value || {}) };
+  return {
+    x: Number(overlay.x) || 0,
+    y: Number(overlay.y) || 0,
+    width: clamp(Number(overlay.width) || DEFAULT_OVERLAY.width, 80, 2400),
+    height: clamp(Number(overlay.height) || DEFAULT_OVERLAY.height, 80, 3000),
+    rotate: clamp(Number(overlay.rotate) || 0, -180, 180),
+    opacity: clamp(Number(overlay.opacity) || 0, 0, 100),
+  };
 }
 
 function applyOverlayMode() {
@@ -871,24 +907,66 @@ function clearTrace() {
   ctx.clearRect(0, 0, els.traceCanvas.width, els.traceCanvas.height);
 }
 
-function updateOverlayFromDrag(event, action, start) {
-  const dx = event.clientX - start.pointerX;
-  const dy = event.clientY - start.pointerY;
-  if (action === "move") {
-    state.overlay.x = start.x + dx;
-    state.overlay.y = start.y + dy;
-  }
-  if (action.indexOf("resize") === 0) {
-    resizeOverlayFromCorner(action, start, dx, dy);
-  }
-  if (action === "rotate") {
-    state.overlay.rotate = clamp(start.rotate + dx / 3, -25, 25);
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function pointerPoint(event) {
+  return { id: event.pointerId, x: event.clientX, y: event.clientY };
+}
+
+function startOverlayGesture(event, pointers) {
+  const points = objectValuesFromMap(pointers);
+  const handle = event.target.closest("[data-action]");
+  const action = handle ? handle.dataset.action : "move";
+  return {
+    action,
+    points,
+    center: pointsCenter(points),
+    distance: pointsDistance(points),
+    angle: pointsAngle(points),
+    overlay: { ...state.overlay },
+  };
+}
+
+function updateOverlayFromGesture(event, pointers, gesture) {
+  const points = objectValuesFromMap(pointers);
+  if (points.length >= 2 && gesture.points.length >= 2) {
+    updateOverlayFromPinch(points, gesture);
+  } else {
+    updateOverlayFromSinglePointer(event, gesture);
   }
   clampOverlayToStage();
 }
 
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, Math.round(value)));
+function updateOverlayFromSinglePointer(event, gesture) {
+  const startPoint = gesture.points[0] || { x: event.clientX, y: event.clientY };
+  const dx = event.clientX - startPoint.x;
+  const dy = event.clientY - startPoint.y;
+  if (gesture.action === "move") {
+    state.overlay.x = gesture.overlay.x + dx;
+    state.overlay.y = gesture.overlay.y + dy;
+  }
+  if (gesture.action.indexOf("resize") === 0) {
+    resizeOverlayFromCorner(gesture.action, gesture.overlay, dx, dy);
+  }
+  if (gesture.action === "rotate") {
+    state.overlay.rotate = clamp(gesture.overlay.rotate + dx / 3, -180, 180);
+  }
+}
+
+function updateOverlayFromPinch(points, gesture) {
+  const center = pointsCenter(points);
+  const startDistance = Math.max(1, gesture.distance);
+  const scale = pointsDistance(points) / startDistance;
+  const aspect = gesture.overlay.height / gesture.overlay.width;
+  const nextWidth = gesture.overlay.width * scale;
+  const angleDelta = pointsAngle(points) - gesture.angle;
+  state.overlay.width = nextWidth;
+  state.overlay.height = nextWidth * aspect;
+  state.overlay.rotate = clamp(gesture.overlay.rotate + angleDelta, -180, 180);
+  state.overlay.x = gesture.overlay.x + (center.x - gesture.center.x);
+  state.overlay.y = gesture.overlay.y + (center.y - gesture.center.y);
 }
 
 function resizeOverlayFromCorner(action, start, dx, dy) {
@@ -907,6 +985,28 @@ function resizeOverlayFromCorner(action, start, dx, dy) {
   const yDirection = action.indexOf("s") > -1 ? 1 : -1;
   state.overlay.x = start.x + (widthDelta / 2) * xDirection;
   state.overlay.y = start.y + ((state.overlay.height - start.height) / 2) * yDirection;
+}
+
+function objectValuesFromMap(map) {
+  return Array.from(map.values());
+}
+
+function pointsCenter(points) {
+  if (!points.length) return { x: 0, y: 0 };
+  const total = points.reduce((sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }), { x: 0, y: 0 });
+  return { x: total.x / points.length, y: total.y / points.length };
+}
+
+function pointsDistance(points) {
+  if (points.length < 2) return 1;
+  const [a, b] = points;
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
+function pointsAngle(points) {
+  if (points.length < 2) return 0;
+  const [a, b] = points;
+  return (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
 }
 
 function clampOverlayToStage() {
@@ -1083,11 +1183,16 @@ function normalizeArtworks(artworks) {
     const sessions = Array.isArray(artwork.sessions) && artwork.sessions.length
       ? artwork.sessions
       : [{ id: createId(), date: artwork.date || new Date().toISOString().slice(0, 10), minutes: Number(artwork.minutes || 0) }];
+    const overlayPositions = {};
+    Object.entries(artwork.overlayPositions || {}).forEach(([key, value]) => {
+      overlayPositions[key] = sanitizeOverlay(value);
+    });
     return {
       ...artwork,
       sessions,
       minutes: totalMinutes(sessions),
       images: Array.isArray(artwork.images) ? artwork.images : [],
+      overlayPositions,
     };
   });
 }

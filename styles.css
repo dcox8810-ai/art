@@ -744,10 +744,13 @@ body.overlay-fullscreen-active .view:not(#view-overlay) {
 
 #view-overlay.overlay-fullscreen .color-field,
 #view-overlay.overlay-fullscreen .opacity-field {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(6, 32px);
 }
 
-#view-overlay.overlay-fullscreen .color-field label,
+#view-overlay.overlay-fullscreen .opacity-field {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 #view-overlay.overlay-fullscreen .opacity-field label {
   min-height: 34px;
   padding-top: 7px;
@@ -900,7 +903,8 @@ body.overlay-fullscreen-active .view:not(#view-overlay) {
 
 .color-field {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(6, 32px);
+  align-items: center;
   gap: 8px;
   margin: 0;
   border: 0;
@@ -909,7 +913,7 @@ body.overlay-fullscreen-active .view:not(#view-overlay) {
 
 .opacity-field {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
   margin: 0;
   border: 0;
@@ -956,27 +960,36 @@ body.overlay-fullscreen-active .view:not(#view-overlay) {
 
 .color-field label {
   position: relative;
-  min-height: 38px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  padding: 8px 8px 8px 28px;
-  background: #fff;
-  color: var(--ink);
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  padding: 0;
+  background: transparent;
   cursor: pointer;
-  font-size: 0.74rem;
+  color: transparent;
+  overflow: hidden;
+}
+
+.color-field label span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
 }
 
 .color-field label::before {
   content: "";
   position: absolute;
   top: 50%;
-  left: 8px;
-  width: 14px;
-  height: 14px;
-  border: 1px solid rgba(29, 36, 51, 0.28);
+  left: 50%;
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(29, 36, 51, 0.3);
   border-radius: 50%;
   background: var(--swatch);
-  transform: translateY(-50%);
+  transform: translate(-50%, -50%);
 }
 
 .color-field input {

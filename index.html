@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-title" content="Studio Log" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=6" />
+    <link rel="stylesheet" href="styles.css?v=7" />
   </head>
   <body>
     <main class="app-shell">
@@ -288,22 +288,23 @@
 
         <div class="panel controls">
           <label class="toggle-row"><input id="traceToggle" type="checkbox" checked /> Trace reference lines</label>
+          <label>Trace detail <input id="traceThresholdControl" type="range" min="15" max="90" value="38" /></label>
           <fieldset class="color-field">
             <legend>Trace color</legend>
-            <label style="--swatch:#c4514a"><input type="radio" name="traceColor" value="#c4514a" checked /> Red</label>
-            <label style="--swatch:#1d2433"><input type="radio" name="traceColor" value="#1d2433" /> Black</label>
-            <label style="--swatch:#ffffff"><input type="radio" name="traceColor" value="#ffffff" /> White</label>
-            <label style="--swatch:#167d7f"><input type="radio" name="traceColor" value="#167d7f" /> Green</label>
-            <label style="--swatch:#c9952d"><input type="radio" name="traceColor" value="#c9952d" /> Gold</label>
-            <label style="--swatch:#5c5aa8"><input type="radio" name="traceColor" value="#5c5aa8" /> Blue</label>
+            <label style="--swatch:#c4514a"><input type="radio" name="traceColor" value="#c4514a" checked /><span>Red</span></label>
+            <label style="--swatch:#1d2433"><input type="radio" name="traceColor" value="#1d2433" /><span>Black</span></label>
+            <label style="--swatch:#ffffff"><input type="radio" name="traceColor" value="#ffffff" /><span>White</span></label>
+            <label style="--swatch:#167d7f"><input type="radio" name="traceColor" value="#167d7f" /><span>Green</span></label>
+            <label style="--swatch:#c9952d"><input type="radio" name="traceColor" value="#c9952d" /><span>Gold</span></label>
+            <label style="--swatch:#5c5aa8"><input type="radio" name="traceColor" value="#5c5aa8" /><span>Blue</span></label>
           </fieldset>
           <fieldset class="opacity-field">
             <legend>Overlay opacity</legend>
+            <label><input type="radio" name="overlayOpacity" value="0" /> 0%</label>
             <label><input type="radio" name="overlayOpacity" value="35" /> 35%</label>
             <label><input type="radio" name="overlayOpacity" value="60" /> 60%</label>
             <label><input type="radio" name="overlayOpacity" value="85" checked /> 85%</label>
           </fieldset>
-          <label>Trace detail <input id="traceThresholdControl" type="range" min="15" max="90" value="38" /></label>
           <button class="secondary" type="button" id="resetOverlayButton">Reset overlay</button>
         </div>
       </section>
@@ -343,7 +344,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=6"></script>
+    <script src="app.js?v=7"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");
