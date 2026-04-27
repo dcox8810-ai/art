@@ -983,7 +983,6 @@ async function exportOverlayImage() {
   if (!blob) return;
   const artwork = currentOverlayArtwork();
   const filename = `${slugify(artwork ? artwork.title : "studio-log-overlay")}-overlay.png`;
-
   if (typeof File !== "undefined" && navigator.canShare && navigator.share) {
     const file = new File([blob], filename, { type: "image/png" });
     if (navigator.canShare({ files: [file] })) {
