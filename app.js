@@ -14,6 +14,7 @@ const state = {
   draftSessions: [],
   editingId: null,
   selectedProjectId: null,
+  selectedOverlayArtworkId: null,
   stageFilterTouched: false,
   reviewItems: [],
   reviewIndex: 0,
@@ -116,6 +117,7 @@ function bindElements() {
     backupStatus: document.querySelector("#backupStatus"),
     lastExportedInfo: document.querySelector("#lastExportedInfo"),
     statsGrid: document.querySelector("#statsGrid"),
+    statsRangeSelect: document.querySelector("#statsRangeSelect"),
     statsInsight: document.querySelector("#statsInsight"),
     trendChart: document.querySelector("#trendChart"),
     heatmap: document.querySelector("#calendarHeatmap"),
@@ -176,7 +178,10 @@ function loadUiPrefs() {
   if (els.textSizeSelect) els.textSizeSelect.value = prefs.textSize || "default";
   applyTheme(prefs.theme || "dark");
   if (els.themeSelect) els.themeSelect.value = prefs.theme || "dark";
-  if (els.opacityPlaybackIntervalSelect) els.opacityPlaybackIntervalSelect.value = String(prefs.opacityPlaybackInterval || 1000);
+  if (els.opacityPlaybackIntervalSelect) {
+    const interval = String(prefs.opacityPlaybackInterval || 400);
+    els.opacityPlaybackIntervalSelect.value = ["800", "400", "200", "100"].includes(interval) ? interval : "400";
+  }
   syncDefaultTraceColorControls();
   syncTraceColorControls();
   renderLastExported(prefs.lastExportedAt || "");
@@ -192,7 +197,7 @@ function saveUiPrefs() {
     ...previous,
     textSize: els.textSizeSelect ? els.textSizeSelect.value : previous.textSize || "default",
     theme: els.themeSelect ? els.themeSelect.value : previous.theme || "dark",
-    opacityPlaybackInterval: els.opacityPlaybackIntervalSelect ? Number(els.opacityPlaybackIntervalSelect.value) : previous.opacityPlaybackInterval || 1000,
+    opacityPlaybackInterval: els.opacityPlaybackIntervalSelect ? Number(els.opacityPlaybackIntervalSelect.value) : previous.opacityPlaybackInterval || 400,
     defaultTraceColor: state.defaultTraceColor,
     overlayLocked: state.overlayLocked,
   }));
@@ -340,6 +345,9 @@ function setupForm() {
   els.addSessionButton.addEventListener("click", () => {
     addDraftSession(els.sessionMinutesInput.value, els.sessionDateInput.value);
   });
+  if (els.statsRangeSelect) {
+    els.statsRangeSelect.addEventListener("change", renderStats);
+  }
 
   els.newArtworkButton.addEventListener("click", resetForm);
   els.newProjectButton.addEventListener("click", () => {
@@ -582,6 +590,7 @@ function setupOverlay() {
     });
   }
   els.overlayArtwork.addEventListener("change", () => {
+    state.selectedOverlayArtworkId = els.overlayArtwork.value;
     renderOverlayImageOptions();
     renderOverlayImages();
   });
@@ -878,11 +887,12 @@ function renderReview() {
   state.artworks.forEach((artwork) => {
     artwork.images.forEach((image) => {
       if (!image.dataUrl) return;
+      const artworkRating = Number(artwork.overallRating || 0);
       const haystack = [artwork.title, artwork.medium, artwork.surface, artwork.size, artwork.subject, artwork.notes, image.name]
         .join(" ")
         .toLowerCase();
       if (selectedStage !== "All images" && image.name !== selectedStage) return;
-      if (Number(image.rating) < minRating) return;
+      if (artworkRating < minRating) return;
       if (search && !haystack.includes(search)) return;
       items.push({ artwork, image });
     });
@@ -903,7 +913,7 @@ function reviewThumb(artwork, image, index) {
       <img src="${image.dataUrl}" alt="${escapeHtml(image.name)} for ${escapeHtml(artwork.title)}">
       <div>
         <strong>${escapeHtml(artwork.title)}</strong>
-        <span>${escapeHtml(image.name)} · ${stars(image.rating)}</span>
+        <span>${escapeHtml(image.name)} · ${stars(artwork.overallRating)}</span>
       </div>
     </button>
   `;
@@ -934,7 +944,8 @@ function renderReviewViewer() {
   els.viewerImage.src = item.image.dataUrl;
   els.viewerImage.alt = `${item.image.name} for ${item.artwork.title}`;
   els.viewerTitle.textContent = item.artwork.title;
-  els.viewerDetails.textContent = `${item.image.name} · ${item.artwork.medium || "Medium open"} · ${item.artwork.subject || "Subject open"} · ${item.artwork.minutes} min · ${state.reviewIndex + 1}/${state.reviewItems.length}`;
+  const notes = item.artwork.notes ? `\nNotes: ${item.artwork.notes}` : "\nNotes: none";
+  els.viewerDetails.textContent = `${item.image.name} · ${stars(item.artwork.overallRating)} · ${item.artwork.medium || "Medium open"} · ${item.artwork.subject || "Subject open"} · ${item.artwork.minutes} min · ${state.reviewIndex + 1}/${state.reviewItems.length}${notes}`;
   applyReviewZoom();
 }
 
@@ -1104,6 +1115,7 @@ function renderSelectedProject() {
 
 function selectOverlayArtworkById(id) {
   if (!els.overlayArtwork) return;
+  state.selectedOverlayArtworkId = id;
   els.overlayArtwork.value = id;
   renderOverlayImageOptions();
   renderOverlayImages();
@@ -1244,8 +1256,8 @@ function preferredProjectImage(artwork) {
 }
 
 function compareCards(a, b, sort) {
-  const ratingA = Number(a.image.rating || a.artwork.overallRating || 0);
-  const ratingB = Number(b.image.rating || b.artwork.overallRating || 0);
+  const ratingA = Number(a.artwork.overallRating || 0);
+  const ratingB = Number(b.artwork.overallRating || 0);
   const dateA = new Date(a.artwork.date).getTime();
   const dateB = new Date(b.artwork.date).getTime();
   if (sort === "date-asc") return dateA - dateB;
@@ -1259,63 +1271,73 @@ function compareCards(a, b, sort) {
 }
 
 function renderStats() {
-  const totalMinutes = state.artworks.reduce((sum, art) => sum + art.minutes, 0);
-  const practiceDates = [];
+  const range = statsDateRange(els.statsRangeSelect ? els.statsRangeSelect.value : "last-30");
+  const artworksInRange = state.artworks.filter((art) => dateInRange(art.date || art.createdAt, range));
+  const sessionsInRange = [];
   state.artworks.forEach((art) => {
-    art.sessions.forEach((session) => practiceDates.push(session.date));
+    art.sessions.forEach((session) => {
+      if (dateInRange(session.date, range)) sessionsInRange.push({ ...session, artwork: art });
+    });
   });
+  const totalMinutes = sessionsInRange.reduce((sum, session) => sum + Number(session.minutes || 0), 0);
+  const practiceDates = sessionsInRange.map((session) => session.date);
   const practiceDays = new Set(practiceDates).size;
-  const finished = state.artworks.filter((art) => art.images.some((image) => image.name === "Final artwork" && image.dataUrl)).length;
-  const averageRating = average(state.artworks.map((art) => art.overallRating).filter(Boolean));
-  const avgMinutesPerPiece = state.artworks.length ? totalMinutes / state.artworks.length : 0;
-  const streak = practiceStreak(practiceDates);
-  const topMedium = topGroupLabel("medium");
-  const topSubject = topGroupLabel("subject");
+  const finished = artworksInRange.filter((art) => art.images.some((image) => image.name === "Final artwork" && image.dataUrl)).length;
+  const avgMinutesPerPiece = artworksInRange.length ? totalMinutes / artworksInRange.length : 0;
+  const piecesPerWeek = range.weeks ? artworksInRange.length / range.weeks : 0;
+  const topMedium = topGroupLabel("medium", sessionsInRange);
+  const topSubject = topGroupLabel("subject", sessionsInRange);
+  const timeParts = splitMinutes(totalMinutes);
 
   els.statsGrid.innerHTML = [
-    statCard(Math.round(totalMinutes / 60), "hours"),
-    statCard(Math.round(avgMinutesPerPiece), "avg min / piece"),
+    statCard(`${timeParts.hours}h`, "total time", `${timeParts.minutes}m`),
+    statCard(piecesPerWeek.toFixed(1), "pieces / week"),
     statCard(practiceDays, "practice days"),
     statCard(finished, "finished pieces"),
-    statCard(averageRating ? averageRating.toFixed(1) : "—", "avg rating"),
-    statCard(streak, "day streak"),
+    statCard(Math.round(avgMinutesPerPiece), "avg min / piece"),
   ].join("");
 
   if (els.statsInsight) {
-    let message = "Add a few projects and the app will start showing useful patterns here.";
-    if (state.artworks.length) {
+    let message = "Add a few sessions and the app will start showing useful patterns here.";
+    if (sessionsInRange.length || artworksInRange.length) {
       const focus = topMedium !== "Unspecified" ? topMedium : topSubject;
-      const pieces = state.artworks.length;
-      const streakText = streak ? ` You are on a ${streak}-day practice streak.` : "";
       const focusText = focus !== "Unspecified" ? ` ${focus} is your most worked category.` : "";
-      message = `You have logged ${Math.round(totalMinutes / 60)} hours across ${pieces} pieces.${focusText}${streakText}`;
+      message = `You have logged ${timeParts.hours} hours and ${timeParts.minutes} minutes across ${artworksInRange.length} pieces in this range.${focusText}`;
     }
     els.statsInsight.textContent = message;
   }
 
-  renderHeatmap();
-  renderTrend();
-  renderBreakdown();
-  renderSubjectBreakdown();
+  renderHeatmap(range);
+  renderBreakdown(sessionsInRange);
+  renderSubjectBreakdown(sessionsInRange);
 }
 
-function statCard(value, label) {
-  return `<div class="stat"><strong>${value}</strong><span>${label}</span></div>`;
+function statCard(value, label, secondary = "") {
+  return `<div class="stat"><strong>${value}</strong>${secondary ? `<em>${escapeHtml(secondary)}</em>` : ""}<span>${label}</span></div>`;
 }
 
-function renderHeatmap() {
+function splitMinutes(minutes) {
+  return {
+    hours: Math.floor(minutes / 60),
+    minutes: minutes % 60,
+  };
+}
+
+function renderHeatmap(range = statsDateRange("last-30")) {
   const minutesByDay = new Map();
   state.artworks.forEach((art) => {
     art.sessions.forEach((session) => {
+      if (!dateInRange(session.date, range)) return;
       minutesByDay.set(session.date, (minutesByDay.get(session.date) || 0) + Number(session.minutes || 0));
     });
   });
 
-  const today = new Date();
+  const end = range.end || new Date();
+  const spanDays = Math.min(45, Math.max(7, Math.ceil((end - range.start) / 86400000) + 1 || 14));
   const days = [];
-  for (let i = 13; i >= 0; i -= 1) {
-    const date = new Date(today);
-    date.setDate(today.getDate() - i);
+  for (let i = spanDays - 1; i >= 0; i -= 1) {
+    const date = new Date(end);
+    date.setDate(end.getDate() - i);
     const key = date.toISOString().slice(0, 10);
     const minutes = minutesByDay.get(key) || 0;
     days.push({ key, label: `${date.getMonth() + 1}/${date.getDate()}`, minutes });
@@ -1351,7 +1373,7 @@ function renderHeatmap() {
     `;
   }).join("");
   els.heatmap.innerHTML = `
-    <svg class="minutes-day-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Minutes practiced per day over the last 14 days">
+    <svg class="minutes-day-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Minutes practiced per day for selected date range">
       <g class="y-grid">${ticks}</g>
       <g class="bars">${bars}</g>
       <text class="axis-label" x="12" y="${pad.top + 10}" transform="rotate(-90 12 ${pad.top + 10})">minutes</text>
@@ -1403,12 +1425,12 @@ function renderTrend() {
     </svg>`;
 }
 
-function renderBreakdown() {
-  renderBarBreakdown(els.breakdownList, groupMinutes("medium"));
+function renderBreakdown(sessions = null) {
+  renderBarBreakdown(els.breakdownList, groupMinutes("medium", sessions));
 }
 
-function renderSubjectBreakdown() {
-  renderBarBreakdown(els.subjectBreakdownList, groupMinutes("subject"));
+function renderSubjectBreakdown(sessions = null) {
+  renderBarBreakdown(els.subjectBreakdownList, groupMinutes("subject", sessions));
 }
 
 function renderBarBreakdown(target, groups) {
@@ -1424,8 +1446,8 @@ function renderBarBreakdown(target, groups) {
     .join("");
 }
 
-function topGroupLabel(key) {
-  const groups = groupMinutes(key);
+function topGroupLabel(key, sessions = null) {
+  const groups = groupMinutes(key, sessions);
   const [label] = objectEntries(groups).sort((a, b) => b[1] - a[1])[0] || [];
   return label || "Unspecified";
 }
@@ -1444,17 +1466,94 @@ function practiceStreak(dates) {
   return streak;
 }
 
-function groupMinutes(key) {
+function groupMinutes(key, sessions = null) {
+  if (sessions) {
+    return sessions.reduce((groups, session) => {
+      const artwork = session.artwork || {};
+      const label = artwork[key] || "Unspecified";
+      groups[label] = (groups[label] || 0) + Number(session.minutes || 0);
+      return groups;
+    }, {});
+  }
   return state.artworks.reduce((groups, artwork) => {
     const label = artwork[key] || "Unspecified";
-    groups[label] = (groups[label] || 0) + artwork.minutes;
+    groups[label] = (groups[label] || 0) + Number(artwork.minutes || 0);
     return groups;
   }, {});
 }
 
+function statsDateRange(value) {
+  const end = endOfDay(new Date());
+  let start = new Date(0);
+  if (value === "last-30") {
+    start = startOfDay(new Date());
+    start.setDate(start.getDate() - 29);
+  } else if (value === "month") {
+    const now = new Date();
+    start = new Date(now.getFullYear(), now.getMonth(), 1);
+  } else if (value === "ytd") {
+    const now = new Date();
+    start = new Date(now.getFullYear(), 0, 1);
+  } else if (value === "all") {
+    start = allTimeStartDate();
+  }
+  const days = value === "all"
+    ? allTimeSpanDays()
+    : Math.max(1, Math.ceil((end - start) / 86400000) + 1);
+  return { value, start, end, weeks: Math.max(days / 7, 1 / 7) };
+}
+
+function allTimeStartDate() {
+  const dates = [];
+  state.artworks.forEach((art) => {
+    if (art.date) dates.push(new Date(art.date));
+    art.sessions.forEach((session) => {
+      if (session.date) dates.push(new Date(session.date));
+    });
+  });
+  if (!dates.length) return startOfDay(new Date());
+  return startOfDay(new Date(Math.min(...dates.map((date) => date.getTime()))));
+}
+
+function allTimeSpanDays() {
+  const dates = [];
+  state.artworks.forEach((art) => {
+    if (art.date) dates.push(new Date(art.date));
+    art.sessions.forEach((session) => {
+      if (session.date) dates.push(new Date(session.date));
+    });
+  });
+  if (!dates.length) return 7;
+  const min = Math.min(...dates.map((date) => startOfDay(date).getTime()));
+  const max = Math.max(...dates.map((date) => endOfDay(date).getTime()));
+  return Math.max(1, Math.ceil((max - min) / 86400000) + 1);
+}
+
+function dateInRange(value, range) {
+  if (!value) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  return date >= range.start && date <= range.end;
+}
+
+function startOfDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function endOfDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+}
+
 function renderOverlaySelectors() {
   const comparable = state.artworks.filter((art) => art.images.some((image) => image.name === "Reference" && image.dataUrl));
+  const previous = state.selectedOverlayArtworkId || els.overlayArtwork.value;
   els.overlayArtwork.innerHTML = comparable.map((art) => `<option value="${art.id}">${escapeHtml(art.title)}</option>`).join("");
+  if (comparable.some((art) => art.id === previous)) {
+    els.overlayArtwork.value = previous;
+  } else if (comparable[0]) {
+    els.overlayArtwork.value = comparable[0].id;
+  }
+  state.selectedOverlayArtworkId = els.overlayArtwork.value || null;
   renderOverlayImageOptions();
   renderOverlayImages();
 }

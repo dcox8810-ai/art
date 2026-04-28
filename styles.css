@@ -577,6 +577,10 @@ textarea {
   gap: 10px;
 }
 
+#viewerDetails {
+  white-space: pre-wrap;
+}
+
 .slim {
   width: auto;
   margin-top: 0;
@@ -909,6 +913,10 @@ textarea {
   margin-bottom: 14px;
 }
 
+.stats-range {
+  margin-bottom: 12px;
+}
+
 .stats-insight {
   margin-bottom: 14px;
   border-color: rgba(61, 169, 165, 0.3);
@@ -1019,6 +1027,15 @@ textarea {
 .stat strong {
   display: block;
   font-size: 1.65rem;
+}
+
+.stat em {
+  display: block;
+  margin-top: -4px;
+  color: var(--ink);
+  font-size: 1rem;
+  font-style: normal;
+  font-weight: 850;
 }
 
 .stat span {

@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-title" content="Studio Log" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=15" />
+    <link rel="stylesheet" href="styles.css?v=16" />
   </head>
   <body>
     <main class="app-shell">
@@ -83,6 +83,7 @@
                 <option>Gouache</option>
                 <option>Charcoal</option>
                 <option>Graphite</option>
+                <option>Colored pencil</option>
                 <option>Pastel</option>
                 <option>Digital</option>
                 <option>Other</option>
@@ -267,18 +268,21 @@
       </section>
 
       <section class="view" id="view-stats" aria-labelledby="tab-stats">
+        <div class="stats-range panel">
+          <label>
+            Range
+            <select id="statsRangeSelect">
+              <option value="last-30" selected>Last 30 days</option>
+              <option value="month">This month</option>
+              <option value="ytd">Year to date</option>
+              <option value="all">All time</option>
+            </select>
+          </label>
+        </div>
         <div class="stats-grid" id="statsGrid"></div>
         <section class="panel stats-insight">
           <h2>Overview</h2>
           <p id="statsInsight" class="stats-insight-text"></p>
-        </section>
-        <section class="panel">
-          <h2>Trend</h2>
-          <div id="trendChart" class="trend-chart"></div>
-          <div class="legend">
-            <span><i class="legend-time"></i> Avg minutes per piece</span>
-            <span><i class="legend-rating"></i> Avg rating</span>
-          </div>
         </section>
         <section class="panel">
           <h2>Minutes / Day</h2>
@@ -315,11 +319,10 @@
           <label class="text-size-control">
             Opacity playback
             <select id="opacityPlaybackIntervalSelect">
-              <option value="500">0.5 seconds</option>
-              <option value="1000" selected>1 second</option>
-              <option value="1500">1.5 seconds</option>
-              <option value="2000">2 seconds</option>
-              <option value="3000">3 seconds</option>
+              <option value="800">0.8 seconds</option>
+              <option value="400" selected>0.4 seconds</option>
+              <option value="200">0.2 seconds</option>
+              <option value="100">0.1 seconds</option>
             </select>
           </label>
           <fieldset class="color-field settings-color-field">
@@ -458,7 +461,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=15"></script>
+    <script src="app.js?v=16"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");
