@@ -1365,7 +1365,7 @@ body.review-fullscreen-active .view:not(#view-review) {
   border: 0;
   border-radius: 0;
   background: var(--paper);
-  padding: 12px;
+  padding: 0;
 }
 
 #view-review.review-fullscreen .viewer-toolbar {
@@ -1382,6 +1382,11 @@ body.review-fullscreen-active .view:not(#view-review) {
 #view-review.review-fullscreen .viewer-floating-actions {
   top: max(10px, env(safe-area-inset-top));
   right: max(10px, env(safe-area-inset-right));
+  z-index: 8;
+}
+
+#view-review.review-fullscreen #closeViewerButton {
+  display: none;
 }
 
 #view-review.review-fullscreen .viewer-toolbar button {
@@ -1389,21 +1394,53 @@ body.review-fullscreen-active .view:not(#view-review) {
 }
 
 #view-review.review-fullscreen .viewer-stage {
-  min-height: calc(100svh - 118px);
-  margin-top: 48px;
+  position: fixed;
+  inset: 0 0 124px;
+  min-height: 0;
+  margin-top: 0;
+  border: 0;
+  border-radius: 0;
 }
 
 #view-review.review-fullscreen .viewer-meta {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
-  left: 12px;
-  z-index: 2;
-  padding: 12px;
+  position: fixed;
+  right: max(10px, env(safe-area-inset-right));
+  bottom: max(10px, env(safe-area-inset-bottom));
+  left: max(10px, env(safe-area-inset-left));
+  z-index: 8;
+  padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(19, 26, 39, 0.92);
+  background: rgba(19, 26, 39, 0.82);
   backdrop-filter: blur(12px);
+}
+
+#view-review.review-fullscreen .viewer-meta h2 {
+  margin-bottom: 4px;
+  font-size: 0.92rem;
+}
+
+#view-review.review-fullscreen #viewerDetails {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.25;
+}
+
+#view-review.review-fullscreen .viewer-action-row {
+  position: relative;
+  z-index: 9;
+}
+
+#view-review.review-fullscreen .viewer-time-panel {
+  position: relative;
+  z-index: 9;
+}
+
+#view-review.review-fullscreen .review-nav-zone {
+  bottom: 124px;
+  z-index: 3;
 }
 
 #view-overlay.overlay-fullscreen .overlay-picker,
