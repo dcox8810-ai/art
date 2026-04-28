@@ -10,7 +10,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=17" />
+    <link rel="stylesheet" href="styles.css?v=18" />
   </head>
   <body>
     <main class="app-shell">
@@ -37,6 +37,10 @@
               <input name="title" required placeholder="Sunday portrait study" />
             </label>
           </div>
+          <div class="time-box compact-time-box">
+            <span>Total time</span>
+            <strong id="totalTimeDisplay">0 min</strong>
+          </div>
 
           <input name="date" type="hidden" id="artworkDateInput" />
 
@@ -56,11 +60,7 @@
             <div id="sessionList" class="session-list"></div>
           </section>
 
-          <div class="form-row two">
-            <div class="time-box">
-              <span>Total time</span>
-              <strong id="totalTimeDisplay">0 min</strong>
-            </div>
+          <div class="form-row">
             <label>
               Rating
               <select name="overallRating">
@@ -201,13 +201,13 @@
         </div>
         <div id="reviewGrid" class="review-grid" aria-live="polite"></div>
         <section id="reviewViewer" class="viewer panel hidden" aria-live="polite">
-          <div class="viewer-toolbar">
-            <button class="secondary compact" type="button" id="prevImageButton">Previous</button>
-            <button class="secondary compact" type="button" id="closeViewerButton">Grid</button>
-            <button class="secondary compact" type="button" id="nextImageButton">Next</button>
-            <button class="secondary compact" type="button" id="toggleReviewFullscreenButton">Full screen</button>
-          </div>
           <div class="viewer-stage" id="viewerStage">
+            <div class="viewer-floating-actions">
+              <button class="icon-button" type="button" id="closeViewerButton" aria-label="Close review image">×</button>
+              <button class="icon-button" type="button" id="toggleReviewFullscreenButton" aria-label="Full screen review image">⛶</button>
+            </div>
+            <button class="visually-hidden" type="button" id="prevImageButton">Previous</button>
+            <button class="visually-hidden" type="button" id="nextImageButton">Next</button>
             <button class="review-nav-zone review-nav-prev" type="button" data-review-step="-1" aria-label="Previous image">‹</button>
             <img id="viewerImage" alt="" />
             <button class="review-nav-zone review-nav-next" type="button" data-review-step="1" aria-label="Next image">›</button>
@@ -217,7 +217,22 @@
               <h2 id="viewerTitle">Artwork</h2>
               <p id="viewerDetails" class="helper"></p>
             </div>
-            <button class="primary slim" type="button" id="editFromViewerButton">Update artwork</button>
+            <div class="viewer-action-row">
+              <button class="secondary compact icon-compact" type="button" id="editFromViewerButton" aria-label="Update artwork">✎</button>
+              <button class="secondary compact icon-compact" type="button" id="overlayFromViewerButton" aria-label="Open overlay">◇</button>
+              <button class="secondary compact icon-compact" type="button" id="toggleViewerTimeButton" aria-label="Add time">+</button>
+            </div>
+            <div class="viewer-time-panel hidden" id="viewerTimePanel">
+              <label>
+                Date
+                <input id="viewerTimeDateInput" type="date" />
+              </label>
+              <label>
+                Minutes
+                <input id="viewerTimeMinutesInput" type="number" min="0" step="5" placeholder="30" />
+              </label>
+              <button class="primary slim" type="button" id="viewerAddTimeButton">Add time</button>
+            </div>
           </div>
         </section>
       </section>

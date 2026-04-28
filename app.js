@@ -3,7 +3,7 @@ const UI_PREFS_KEY = "portrait-practice-ui-v1";
 const DB_NAME = "studio-log-db";
 const DB_STORE = "app-state";
 const DB_VERSION = 1;
-const DEFAULT_STAGES = ["Reference", "Block-in", "30 mins", "Final artwork"];
+const DEFAULT_STAGES = ["Reference", "Final artwork", "Block-in", "30 mins"];
 const DEFAULT_OVERLAY = { x: 0, y: 0, width: 280, height: 350, rotate: 0, opacity: 85 };
 const DEFAULT_TRACE_COLOR = "#00e676";
 const OPACITY_STEPS = [0, 35, 60, 85, 100];
@@ -87,6 +87,12 @@ function bindElements() {
     closeViewerButton: document.querySelector("#closeViewerButton"),
     toggleReviewFullscreenButton: document.querySelector("#toggleReviewFullscreenButton"),
     editFromViewerButton: document.querySelector("#editFromViewerButton"),
+    overlayFromViewerButton: document.querySelector("#overlayFromViewerButton"),
+    toggleViewerTimeButton: document.querySelector("#toggleViewerTimeButton"),
+    viewerTimePanel: document.querySelector("#viewerTimePanel"),
+    viewerTimeDateInput: document.querySelector("#viewerTimeDateInput"),
+    viewerTimeMinutesInput: document.querySelector("#viewerTimeMinutesInput"),
+    viewerAddTimeButton: document.querySelector("#viewerAddTimeButton"),
     stageFilter: document.querySelector("#stageFilter"),
     ratingFilter: document.querySelector("#ratingFilter"),
     sortFilter: document.querySelector("#sortFilter"),
@@ -167,7 +173,7 @@ function loadData() {
     state.artworks = seedArtworks();
     saved = null;
   }
-  state.uploadStages = DEFAULT_STAGES.map((name) => ({ name, rating: 0, dataUrl: "" }));
+  state.uploadStages = defaultUploadStages();
   state.draftSessions = [];
   loadUiPrefs();
   restoreDataFromIndexedDb(Boolean(saved), state.dataRevision);
@@ -581,8 +587,44 @@ function setupFilters() {
   }
   els.editFromViewerButton.addEventListener("click", () => {
     const item = state.reviewItems[state.reviewIndex];
-    if (item) loadArtworkForEditing(item.artwork.id);
+    if (!item) return;
+    loadArtworkForEditing(item.artwork.id);
+    activateTab("log");
   });
+  if (els.overlayFromViewerButton) {
+    els.overlayFromViewerButton.addEventListener("click", () => {
+      const item = state.reviewItems[state.reviewIndex];
+      if (!item) return;
+      selectOverlayArtworkById(item.artwork.id);
+      const candidates = item.artwork.images.filter((image) => image.name !== "Reference" && image.dataUrl);
+      const imageIndex = candidates.findIndex((image) => image.name === item.image.name);
+      if (imageIndex >= 0) els.overlayImage.value = String(imageIndex);
+      renderOverlayImages();
+      activateTab("overlay");
+    });
+  }
+  if (els.toggleViewerTimeButton) {
+    els.toggleViewerTimeButton.addEventListener("click", () => {
+      if (!els.viewerTimePanel) return;
+      els.viewerTimePanel.classList.toggle("hidden");
+      if (!els.viewerTimePanel.classList.contains("hidden")) {
+        els.viewerTimeDateInput.value = new Date().toISOString().slice(0, 10);
+        els.viewerTimeMinutesInput.focus();
+      }
+    });
+  }
+  if (els.viewerAddTimeButton) {
+    els.viewerAddTimeButton.addEventListener("click", () => {
+      const item = state.reviewItems[state.reviewIndex];
+      if (!item) return;
+      addSessionToArtwork(item.artwork, els.viewerTimeMinutesInput.value, els.viewerTimeDateInput.value || new Date().toISOString().slice(0, 10));
+      els.viewerTimeMinutesInput.value = "";
+      if (els.viewerTimePanel) els.viewerTimePanel.classList.add("hidden");
+      renderReview();
+      const nextIndex = state.reviewItems.findIndex((entry) => entry.artwork.id === item.artwork.id && entry.image.name === item.image.name);
+      if (nextIndex >= 0) openReviewViewer(nextIndex);
+    });
+  }
 
   setupReviewZoom();
 }
@@ -739,7 +781,8 @@ function toggleReviewFullscreen() {
   if (els.reviewView) els.reviewView.classList.toggle("review-fullscreen", isFullscreen);
   document.body.classList.toggle("review-fullscreen-active", isFullscreen);
   if (els.toggleReviewFullscreenButton) {
-    els.toggleReviewFullscreenButton.textContent = isFullscreen ? "Exit full screen" : "Full screen";
+    els.toggleReviewFullscreenButton.textContent = isFullscreen ? "×" : "⛶";
+    els.toggleReviewFullscreenButton.setAttribute("aria-label", isFullscreen ? "Exit full screen" : "Full screen review image");
   }
   if (state.reviewIndex >= 0 && state.reviewItems[state.reviewIndex]) {
     renderReviewViewer();
@@ -854,7 +897,7 @@ function renderUploadStages() {
 
 function renderSessions() {
   const total = totalMinutes(state.draftSessions);
-  els.totalTimeDisplay.textContent = `${total} min`;
+  els.totalTimeDisplay.textContent = formatDuration(total);
   els.sessionList.innerHTML = state.draftSessions.length
     ? state.draftSessions
         .map((session) => `
@@ -882,6 +925,31 @@ function totalMinutes(sessions) {
   return sessions.reduce((sum, session) => sum + Number(session.minutes || 0), 0);
 }
 
+function defaultUploadStages() {
+  return DEFAULT_STAGES.map((name) => ({ name, rating: 0, dataUrl: "" }));
+}
+
+function orderedUploadStages(stages = []) {
+  const preferred = DEFAULT_STAGES.map((stage) => stage.toLowerCase());
+  return [...stages].sort((a, b) => {
+    const aIndex = preferred.indexOf(String(a.name || "").toLowerCase());
+    const bIndex = preferred.indexOf(String(b.name || "").toLowerCase());
+    if (aIndex === -1 && bIndex === -1) return 0;
+    if (aIndex === -1) return 1;
+    if (bIndex === -1) return -1;
+    return aIndex - bIndex;
+  });
+}
+
+function formatDuration(minutes) {
+  const total = Math.max(0, Math.round(Number(minutes) || 0));
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
+  if (hours && mins) return `${hours}h ${mins}m`;
+  if (hours) return `${hours}h`;
+  return `${mins} min`;
+}
+
 function renderStageFilter() {
   const previous = els.stageFilter.value;
   const stages = new Set(["All images"]);
@@ -902,7 +970,7 @@ function renderReview() {
     state.reviewFullscreen = false;
     if (els.reviewView) els.reviewView.classList.remove("review-fullscreen");
     document.body.classList.remove("review-fullscreen-active");
-    if (els.toggleReviewFullscreenButton) els.toggleReviewFullscreenButton.textContent = "Full screen";
+    if (els.toggleReviewFullscreenButton) els.toggleReviewFullscreenButton.textContent = "⛶";
   }
   const selectedStage = els.stageFilter.value || "All images";
   const minRating = Number(els.ratingFilter.value);
@@ -934,12 +1002,13 @@ function renderReview() {
 }
 
 function reviewThumb(artwork, image, index) {
+  const rating = stars(artwork.overallRating);
   return `
     <button class="thumb-card" type="button" data-review-index="${index}" aria-label="Open ${escapeHtml(image.name)} for ${escapeHtml(artwork.title)}">
       <img src="${image.dataUrl}" alt="${escapeHtml(image.name)} for ${escapeHtml(artwork.title)}">
       <div>
         <strong>${escapeHtml(artwork.title)}</strong>
-        <span>${escapeHtml(image.name)} · ${stars(artwork.overallRating)}</span>
+        <span>${escapeHtml(image.name)} · <b class="review-rating">${rating}</b></span>
       </div>
     </button>
   `;
@@ -953,7 +1022,7 @@ function openReviewViewer(index) {
   state.reviewFullscreen = false;
   if (els.reviewView) els.reviewView.classList.remove("review-fullscreen");
   document.body.classList.remove("review-fullscreen-active");
-  if (els.toggleReviewFullscreenButton) els.toggleReviewFullscreenButton.textContent = "Full screen";
+  if (els.toggleReviewFullscreenButton) els.toggleReviewFullscreenButton.textContent = "⛶";
   renderReviewViewer();
 }
 
@@ -967,6 +1036,8 @@ function stepReview(direction) {
 function renderReviewViewer() {
   const item = state.reviewItems[state.reviewIndex];
   if (!item) return;
+  if (els.viewerTimePanel) els.viewerTimePanel.classList.add("hidden");
+  if (els.viewerTimeDateInput) els.viewerTimeDateInput.value = new Date().toISOString().slice(0, 10);
   els.viewerImage.src = item.image.dataUrl;
   els.viewerImage.alt = `${item.image.name} for ${item.artwork.title}`;
   els.viewerTitle.textContent = item.artwork.title;
@@ -987,6 +1058,7 @@ function setupReviewZoom() {
 
   els.viewerStage.addEventListener("pointerdown", (event) => {
     if (event.target.closest("[data-review-step]")) return;
+    if (event.target.closest("button, input, select, textarea, .viewer-time-panel")) return;
     if (!state.reviewItems.length) return;
     event.preventDefault();
     pointers.set(event.pointerId, pointerPoint(event));
@@ -1312,12 +1384,8 @@ function renderStats() {
   const finished = artworksInRange.filter((art) => art.images.some((image) => image.name === "Final artwork" && image.dataUrl)).length;
   const avgMinutesPerPiece = artworksInRange.length ? totalMinutes / artworksInRange.length : 0;
   const piecesPerWeek = range.weeks ? artworksInRange.length / range.weeks : 0;
-  const topMedium = topGroupLabel("medium", sessionsInRange);
-  const topSubject = topGroupLabel("subject", sessionsInRange);
-  const timeParts = splitMinutes(totalMinutes);
-
   els.statsGrid.innerHTML = [
-    statCard(`${timeParts.hours}h`, "total time", `${timeParts.minutes}m`),
+    statCard(formatDuration(totalMinutes), "total time", "", "stat-hero"),
     statCard(piecesPerWeek.toFixed(1), "pieces / week"),
     statCard(practiceDays, "practice days"),
     statCard(finished, "finished pieces"),
@@ -1325,7 +1393,7 @@ function renderStats() {
   ].join("");
 
   if (els.statsInsight) {
-    els.statsInsight.textContent = goalStatusText(goal);
+    els.statsInsight.innerHTML = goalStatusMarkup(goal);
   }
 
   renderHeatmap(range, goal);
@@ -1333,8 +1401,8 @@ function renderStats() {
   renderSubjectBreakdown(sessionsInRange);
 }
 
-function statCard(value, label, secondary = "") {
-  return `<div class="stat"><strong>${value}</strong>${secondary ? `<em>${escapeHtml(secondary)}</em>` : ""}<span>${label}</span></div>`;
+function statCard(value, label, secondary = "", className = "") {
+  return `<div class="stat ${className}"><strong>${value}</strong>${secondary ? `<em>${escapeHtml(secondary)}</em>` : ""}<span>${label}</span></div>`;
 }
 
 function splitMinutes(minutes) {
@@ -1359,7 +1427,7 @@ function currentGoalSettings() {
   });
 }
 
-function goalStatusText(goal) {
+function goalProgress(goal) {
   const period = currentGoalPeriod(goal.period);
   const sessions = [];
   state.artworks.forEach((art) => {
@@ -1371,6 +1439,22 @@ function goalStatusText(goal) {
   const remaining = Math.max(0, goal.amount - progress);
   const complete = Math.min(100, Math.round((progress / goal.amount) * 100));
   const daysLeft = Math.max(0, Math.ceil((period.end - new Date()) / 86400000));
+  return { progress, remaining, complete, daysLeft };
+}
+
+function goalStatusMarkup(goal) {
+  const { progress, remaining, complete, daysLeft } = goalProgress(goal);
+  const text = remaining
+    ? `${formatGoalValue(progress, goal.type)} / ${formatGoalValue(goal.amount, goal.type)} complete (${complete}%). ${formatGoalValue(remaining, goal.type)} to go. ${daysLeft} ${daysLeft === 1 ? "day" : "days"} left.`
+    : `${formatGoalValue(progress, goal.type)} / ${formatGoalValue(goal.amount, goal.type)} complete. Goal reached with ${daysLeft} ${daysLeft === 1 ? "day" : "days"} left.`;
+  return `
+    <span>${escapeHtml(text)}</span>
+    <i class="goal-progress" aria-hidden="true"><b style="width:${complete}%"></b></i>
+  `;
+}
+
+function goalStatusText(goal) {
+  const { progress, remaining, complete, daysLeft } = goalProgress(goal);
   return remaining
     ? `${formatGoalValue(progress, goal.type)} / ${formatGoalValue(goal.amount, goal.type)} complete (${complete}%). ${formatGoalValue(remaining, goal.type)} to go. ${daysLeft} ${daysLeft === 1 ? "day" : "days"} left.`
     : `${formatGoalValue(progress, goal.type)} / ${formatGoalValue(goal.amount, goal.type)} complete. Goal reached with ${daysLeft} ${daysLeft === 1 ? "day" : "days"} left.`;
@@ -1468,7 +1552,8 @@ function renderHeatmap(range = statsDateRange("last-30"), goal = currentGoalSett
     });
   });
   const days = units.map((unit) => ({ ...unit, value: valuesByKey.get(unit.key) || 0 }));
-  const maxValue = Math.max(goal.amount, ...days.map((day) => day.value), goal.type === "times" ? 1 : 30);
+  const baseline = goal.type === "minutes" ? 30 : 1;
+  const maxValue = Math.max(goal.amount, ...days.map((day) => day.value), baseline);
   const width = 360;
   const height = 210;
   const pad = { top: 18, right: 14, bottom: 42, left: 38 };
@@ -2279,7 +2364,7 @@ function resetForm() {
   els.artworkDateInput.value = new Date().toISOString().slice(0, 10);
   els.sessionDateInput.value = new Date().toISOString().slice(0, 10);
   state.draftSessions = [];
-  state.uploadStages = DEFAULT_STAGES.map((name) => ({ name, rating: 0, dataUrl: "" }));
+  state.uploadStages = defaultUploadStages();
   els.formTitle.textContent = "New Artwork";
   els.saveArtworkButton.textContent = "Save artwork";
   if (els.saveStatus) els.saveStatus.textContent = "";
@@ -2310,7 +2395,7 @@ function loadArtworkForEditing(id) {
   els.sessionMinutesInput.value = "";
   els.sessionDateInput.value = artwork.date || new Date().toISOString().slice(0, 10);
   state.draftSessions = [...artwork.sessions];
-  state.uploadStages = artwork.images.length ? artwork.images.map((image) => ({ ...image })) : DEFAULT_STAGES.map((name) => ({ name, rating: 0, dataUrl: "" }));
+  state.uploadStages = artwork.images.length ? orderedUploadStages(artwork.images.map((image) => ({ ...image }))) : defaultUploadStages();
   renderSessions();
   renderUploadStages();
   activateTab("log");
