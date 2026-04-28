@@ -1,10 +1,41 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#0c111b"/>
-  <rect x="78" y="72" width="356" height="368" rx="38" fill="#131a27" stroke="#2b3954" stroke-width="16"/>
-  <rect x="116" y="108" width="280" height="292" rx="22" fill="#f1e8d4"/>
-  <path d="M176 216c12-84 146-96 168-10 16 64-22 142-86 146-60 4-96-70-82-136z" fill="#d9aa82"/>
-  <path d="M176 224c16-100 154-102 172-18-44-34-120-42-172 18z" fill="#2b1e1c"/>
-  <path d="M204 266q28-20 56 0M276 266q28-20 56 0M232 324q34 25 76 0" fill="none" stroke="#142033" stroke-width="13" stroke-linecap="round"/>
-  <path d="M138 386h236" stroke="#00e676" stroke-width="18" stroke-linecap="round"/>
-  <path d="M348 112l42 42M330 130l42 42" stroke="#d0a44a" stroke-width="18" stroke-linecap="round"/>
+  <defs>
+    <radialGradient id="bg" cx="28%" cy="18%" r="85%">
+      <stop offset="0" stop-color="#fff7d6"/>
+      <stop offset="0.32" stop-color="#5eead4"/>
+      <stop offset="0.62" stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#111827"/>
+    </radialGradient>
+    <linearGradient id="ringA" x1="96" y1="78" x2="424" y2="438" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ff4fd8"/>
+      <stop offset="0.48" stop-color="#ffd60a"/>
+      <stop offset="1" stop-color="#00e676"/>
+    </linearGradient>
+    <linearGradient id="ringB" x1="396" y1="88" x2="88" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7c3cff"/>
+      <stop offset="0.46" stop-color="#3b82ff"/>
+      <stop offset="1" stop-color="#20f4d2"/>
+    </linearGradient>
+    <linearGradient id="ringC" x1="142" y1="406" x2="398" y2="114" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ff7a59"/>
+      <stop offset="0.5" stop-color="#ff3b30"/>
+      <stop offset="1" stop-color="#ffd60a"/>
+    </linearGradient>
+    <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#020617" flood-opacity="0.35"/>
+    </filter>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 .55 0"/>
+      <feBlend in="SourceGraphic"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <path d="M93 121c78-86 231-91 317-3 82 84 67 220-12 282-96 75-242 40-287-59-38-84 24-174 124-190 96-16 181 55 168 138-11 72-89 118-162 91-60-23-75-89-42-126 32-36 96-38 126 0" fill="none" stroke="url(#ringA)" stroke-width="42" stroke-linecap="round" filter="url(#softShadow)"/>
+  <path d="M401 111c-83-56-206-47-278 29-86 91-54 237 48 299 91 55 215 28 262-58 42-77 2-176-80-206-78-28-163 13-181 84-15 59 22 117 82 128 50 9 95-22 104-66 7-34-14-67-48-78" fill="none" stroke="url(#ringB)" stroke-width="31" stroke-linecap="round" opacity="0.92" filter="url(#glow)"/>
+  <path d="M144 382c-50-64-54-159-5-226 60-82 184-100 266-34 76 61 94 173 39 250-50 70-149 92-221 50-64-38-87-115-52-172 32-53 102-72 154-41 44 26 60 81 35 124-22 38-69 51-107 30" fill="none" stroke="url(#ringC)" stroke-width="23" stroke-linecap="round" opacity="0.86"/>
+  <circle cx="257" cy="257" r="74" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.42)" stroke-width="8"/>
+  <circle cx="257" cy="257" r="38" fill="#0f172a" opacity="0.5"/>
+  <path d="M112 92c58-39 165-51 238-13" fill="none" stroke="rgba(255,255,255,0.42)" stroke-width="12" stroke-linecap="round"/>
 </svg>
