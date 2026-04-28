@@ -6,6 +6,7 @@ const DB_VERSION = 1;
 const DEFAULT_STAGES = ["Reference", "Block-in", "30 mins", "Final artwork"];
 const DEFAULT_OVERLAY = { x: 0, y: 0, width: 280, height: 350, rotate: 0, opacity: 85 };
 const DEFAULT_TRACE_COLOR = "#00e676";
+const OPACITY_STEPS = [0, 35, 60, 85, 100];
 
 const state = {
   artworks: [],
@@ -21,6 +22,8 @@ const state = {
   overlayHistory: [],
   overlayRedoHistory: [],
   overlayLocked: false,
+  opacityPlaybackTimer: null,
+  opacityPlaybackIndex: 0,
   dataRevision: 0,
   overlayStageZoom: { scale: 1, x: 0, y: 0 },
   defaultTraceColor: DEFAULT_TRACE_COLOR,
@@ -130,7 +133,7 @@ function bindElements() {
     toggleOverlayFullscreenButton: document.querySelector("#toggleOverlayFullscreenButton"),
     exitOverlayFullscreenButton: document.querySelector("#exitOverlayFullscreenButton"),
     exportOverlayButton: document.querySelector("#exportOverlayButton"),
-    exportOpacityFramesButton: document.querySelector("#exportOpacityFramesButton"),
+    toggleOpacityPlaybackButton: document.querySelector("#toggleOpacityPlaybackButton"),
     exportOverlayFullscreenButton: document.querySelector("#exportOverlayFullscreenButton"),
     undoOverlayButton: document.querySelector("#undoOverlayButton"),
     redoOverlayButton: document.querySelector("#redoOverlayButton"),
@@ -144,6 +147,7 @@ function bindElements() {
     overlayOpacityField: document.querySelector(".opacity-field"),
     textSizeSelect: document.querySelector("#textSizeSelect"),
     themeSelect: document.querySelector("#themeSelect"),
+    opacityPlaybackIntervalSelect: document.querySelector("#opacityPlaybackIntervalSelect"),
     defaultTraceColorInputs: document.querySelectorAll("input[name='defaultTraceColor']"),
   });
 }
@@ -172,6 +176,7 @@ function loadUiPrefs() {
   if (els.textSizeSelect) els.textSizeSelect.value = prefs.textSize || "default";
   applyTheme(prefs.theme || "dark");
   if (els.themeSelect) els.themeSelect.value = prefs.theme || "dark";
+  if (els.opacityPlaybackIntervalSelect) els.opacityPlaybackIntervalSelect.value = String(prefs.opacityPlaybackInterval || 1000);
   syncDefaultTraceColorControls();
   syncTraceColorControls();
   renderLastExported(prefs.lastExportedAt || "");
@@ -187,6 +192,7 @@ function saveUiPrefs() {
     ...previous,
     textSize: els.textSizeSelect ? els.textSizeSelect.value : previous.textSize || "default",
     theme: els.themeSelect ? els.themeSelect.value : previous.theme || "dark",
+    opacityPlaybackInterval: els.opacityPlaybackIntervalSelect ? Number(els.opacityPlaybackIntervalSelect.value) : previous.opacityPlaybackInterval || 1000,
     defaultTraceColor: state.defaultTraceColor,
     overlayLocked: state.overlayLocked,
   }));
@@ -304,6 +310,15 @@ function setupForm() {
     els.themeSelect.addEventListener("change", () => {
       applyTheme(els.themeSelect.value);
       saveUiPrefs();
+    });
+  }
+  if (els.opacityPlaybackIntervalSelect) {
+    els.opacityPlaybackIntervalSelect.addEventListener("change", () => {
+      saveUiPrefs();
+      if (state.opacityPlaybackTimer) {
+        stopOpacityPlayback();
+        startOpacityPlayback();
+      }
     });
   }
   toArray(els.defaultTraceColorInputs).forEach((input) => {
@@ -554,13 +569,14 @@ function setupOverlay() {
     if (document.querySelector("#view-overlay").classList.contains("overlay-fullscreen")) toggleOverlayFullscreen();
   });
   els.exportOverlayButton.addEventListener("click", exportOverlayImage);
-  if (els.exportOpacityFramesButton) els.exportOpacityFramesButton.addEventListener("click", exportOpacityFrames);
+  if (els.toggleOpacityPlaybackButton) els.toggleOpacityPlaybackButton.addEventListener("click", toggleOpacityPlayback);
   els.exportOverlayFullscreenButton.addEventListener("click", exportOverlayImage);
   els.undoOverlayButton.addEventListener("click", undoOverlay);
   if (els.redoOverlayButton) els.redoOverlayButton.addEventListener("click", redoOverlay);
   if (els.closeOverlayButton) {
     els.closeOverlayButton.addEventListener("click", () => {
       if (document.querySelector("#view-overlay").classList.contains("overlay-fullscreen")) toggleOverlayFullscreen();
+      stopOpacityPlayback();
       saveCurrentOverlayPosition();
       activateTab("projects");
     });
@@ -708,6 +724,42 @@ function toggleOverlayFullscreen() {
     applyOverlayTransform();
     saveCurrentOverlayPosition();
   }, 0);
+}
+
+function toggleOpacityPlayback() {
+  if (state.opacityPlaybackTimer) {
+    stopOpacityPlayback();
+    return;
+  }
+  startOpacityPlayback();
+}
+
+function startOpacityPlayback() {
+  const currentIndex = OPACITY_STEPS.indexOf(Number(state.overlay.opacity));
+  state.opacityPlaybackIndex = currentIndex >= 0 ? currentIndex : 0;
+  advanceOpacityPlayback();
+  const interval = Math.max(250, Number(els.opacityPlaybackIntervalSelect ? els.opacityPlaybackIntervalSelect.value : 1000) || 1000);
+  state.opacityPlaybackTimer = window.setInterval(advanceOpacityPlayback, interval);
+  if (els.toggleOpacityPlaybackButton) {
+    els.toggleOpacityPlaybackButton.textContent = "Ⅱ";
+    els.toggleOpacityPlaybackButton.setAttribute("aria-label", "Pause opacity cycle");
+  }
+}
+
+function stopOpacityPlayback() {
+  if (state.opacityPlaybackTimer) {
+    window.clearInterval(state.opacityPlaybackTimer);
+    state.opacityPlaybackTimer = null;
+  }
+  if (els.toggleOpacityPlaybackButton) {
+    els.toggleOpacityPlaybackButton.textContent = "▶";
+    els.toggleOpacityPlaybackButton.setAttribute("aria-label", "Play opacity cycle");
+  }
+}
+
+function advanceOpacityPlayback() {
+  state.opacityPlaybackIndex = (state.opacityPlaybackIndex + 1) % OPACITY_STEPS.length;
+  setOverlayOpacity(OPACITY_STEPS[state.opacityPlaybackIndex], { save: false, history: false });
 }
 
 function renderAll() {
@@ -1455,14 +1507,15 @@ function syncOverlayControls() {
   if (els.redoOverlayButton) els.redoOverlayButton.disabled = !state.overlayRedoHistory.length;
 }
 
-function setOverlayOpacity(value) {
+function setOverlayOpacity(value, options = {}) {
   if (!Number.isFinite(value)) return;
+  const { save = true, history = true } = options;
   const next = Math.max(0, Math.min(100, value));
-  if (state.overlay.opacity !== next) clearOverlayRedoHistory();
+  if (state.overlay.opacity !== next && history) clearOverlayRedoHistory();
   state.overlay.opacity = next;
   syncOverlayControls();
   applyOverlayTransform();
-  saveCurrentOverlayPosition();
+  if (save) saveCurrentOverlayPosition();
 }
 
 function applyOverlayTransform() {
@@ -1762,29 +1815,6 @@ async function exportOverlayImage() {
     }
   }
 
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
-async function exportOpacityFrames() {
-  const artwork = currentOverlayArtwork();
-  const baseName = slugify(artwork ? artwork.title : "studio-log-overlay");
-  const opacities = [0, 35, 60, 85, 100];
-  for (const opacity of opacities) {
-    const blob = await renderOverlayBlob(opacity);
-    if (!blob) return;
-    downloadBlob(blob, `${baseName}-overlay-${opacity}.png`);
-  }
-  setAppStatus("Exported opacity frames. Use Photos or Shortcuts to turn them into an animation.");
-}
-
-function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

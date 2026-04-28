@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-title" content="Studio Log" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=14" />
+    <link rel="stylesheet" href="styles.css?v=15" />
   </head>
   <body>
     <main class="app-shell">
@@ -312,6 +312,16 @@
               <option value="light">Light</option>
             </select>
           </label>
+          <label class="text-size-control">
+            Opacity playback
+            <select id="opacityPlaybackIntervalSelect">
+              <option value="500">0.5 seconds</option>
+              <option value="1000" selected>1 second</option>
+              <option value="1500">1.5 seconds</option>
+              <option value="2000">2 seconds</option>
+              <option value="3000">3 seconds</option>
+            </select>
+          </label>
           <fieldset class="color-field settings-color-field">
             <legend>Default overlay color</legend>
             <label style="--swatch:#ff3b30"><input type="radio" name="defaultTraceColor" value="#ff3b30" /><span>Red</span></label>
@@ -349,6 +359,7 @@
             <label class="toggle-row overlay-lock-inline"><input id="overlayLockToggle" type="checkbox" /> Lock overlay</label>
             <button class="secondary compact" type="button" id="undoOverlayButton">Undo</button>
             <button class="secondary compact" type="button" id="redoOverlayButton">Redo</button>
+            <button class="secondary compact icon-compact" type="button" id="toggleOpacityPlaybackButton" aria-label="Play opacity cycle">▶</button>
             <button class="secondary compact icon-compact" type="button" id="toggleOverlayFullscreenButton" aria-label="Full screen overlay">⛶</button>
             <button class="secondary compact" type="button" id="closeOverlayButton">Done</button>
           </div>
@@ -400,7 +411,6 @@
         </div>
         <div class="panel overlay-picker">
           <button class="secondary slim" type="button" id="exportOverlayButton">Export image</button>
-          <button class="secondary slim" type="button" id="exportOpacityFramesButton">Export opacity frames</button>
           <label>
             Artwork
             <select id="overlayArtwork"></select>
@@ -448,7 +458,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=14"></script>
+    <script src="app.js?v=15"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");
