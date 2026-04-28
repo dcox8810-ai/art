@@ -1,4 +1,4 @@
-const CACHE_NAME = "studio-log-v16";
+const CACHE_NAME = "studio-log-v17";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -6,6 +6,9 @@ const APP_SHELL = [
   "./app.js",
   "./manifest.webmanifest",
   "./icon.svg",
+  "./icon-180.png",
+  "./icon-192.png",
+  "./icon-512.png",
 ];
 
 self.addEventListener("install", (event) => {

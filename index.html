@@ -3,13 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-    <title>Portrait Practice Tracker</title>
+    <title>Portrait Log</title>
     <meta name="theme-color" content="#167d7f" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="Studio Log" />
+    <meta name="apple-mobile-web-app-title" content="Portrait Log" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=16" />
+    <link rel="apple-touch-icon" href="icon-180.png" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css?v=17" />
   </head>
   <body>
     <main class="app-shell">
@@ -268,6 +269,10 @@
       </section>
 
       <section class="view" id="view-stats" aria-labelledby="tab-stats">
+        <section class="panel goal-status" id="goalStatusPanel">
+          <h2>Goal</h2>
+          <p id="statsInsight" class="stats-insight-text"></p>
+        </section>
         <div class="stats-range panel">
           <label>
             Range
@@ -280,12 +285,8 @@
           </label>
         </div>
         <div class="stats-grid" id="statsGrid"></div>
-        <section class="panel stats-insight">
-          <h2>Overview</h2>
-          <p id="statsInsight" class="stats-insight-text"></p>
-        </section>
         <section class="panel">
-          <h2>Minutes / Day</h2>
+          <h2 id="goalChartTitle">Goal Trend</h2>
           <div id="calendarHeatmap" class="heatmap"></div>
         </section>
         <section class="panel">
@@ -325,6 +326,31 @@
               <option value="100">0.1 seconds</option>
             </select>
           </label>
+          <div class="goal-settings">
+            <h3>Practice goal</h3>
+            <div class="goal-setting-grid">
+              <label>
+                Amount
+                <input id="goalAmountInput" type="number" min="1" step="1" value="3" />
+              </label>
+              <label>
+                Type
+                <select id="goalTypeSelect">
+                  <option value="times">Times</option>
+                  <option value="minutes">Minutes</option>
+                  <option value="hours" selected>Hours</option>
+                </select>
+              </label>
+              <label>
+                Period
+                <select id="goalPeriodSelect">
+                  <option value="daily">Daily</option>
+                  <option value="weekly" selected>Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+              </label>
+            </div>
+          </div>
           <fieldset class="color-field settings-color-field">
             <legend>Default overlay color</legend>
             <label style="--swatch:#ff3b30"><input type="radio" name="defaultTraceColor" value="#ff3b30" /><span>Red</span></label>
@@ -364,7 +390,6 @@
             <button class="secondary compact" type="button" id="redoOverlayButton">Redo</button>
             <button class="secondary compact icon-compact" type="button" id="toggleOpacityPlaybackButton" aria-label="Play opacity cycle">▶</button>
             <button class="secondary compact icon-compact" type="button" id="toggleOverlayFullscreenButton" aria-label="Full screen overlay">⛶</button>
-            <button class="secondary compact" type="button" id="closeOverlayButton">Done</button>
           </div>
           <div id="overlayViewport" class="overlay-viewport">
             <img id="referenceLayer" alt="Reference image" />
@@ -381,6 +406,16 @@
               <button class="overlay-handle rotate-handle rotate-bottom" type="button" data-action="rotate" aria-label="Rotate overlay from bottom"></button>
             </div>
           </div>
+        </section>
+        <section class="overlay-nudge" aria-label="Overlay nudge controls">
+          <button type="button" data-nudge="up" aria-label="Nudge overlay up">↑</button>
+          <button type="button" data-nudge="left" aria-label="Nudge overlay left">←</button>
+          <button type="button" data-nudge="down" aria-label="Nudge overlay down">↓</button>
+          <button type="button" data-nudge="right" aria-label="Nudge overlay right">→</button>
+          <button type="button" data-nudge="scale-down" aria-label="Scale overlay down">−</button>
+          <button type="button" data-nudge="scale-up" aria-label="Scale overlay up">+</button>
+          <button type="button" data-nudge="rotate-left" aria-label="Rotate overlay left">↶</button>
+          <button type="button" data-nudge="rotate-right" aria-label="Rotate overlay right">↷</button>
         </section>
 
         <div class="fullscreen-actions" aria-label="Overlay actions">
@@ -461,7 +496,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=16"></script>
+    <script src="app.js?v=17"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");

@@ -119,6 +119,7 @@ function bindElements() {
     statsGrid: document.querySelector("#statsGrid"),
     statsRangeSelect: document.querySelector("#statsRangeSelect"),
     statsInsight: document.querySelector("#statsInsight"),
+    goalChartTitle: document.querySelector("#goalChartTitle"),
     trendChart: document.querySelector("#trendChart"),
     heatmap: document.querySelector("#calendarHeatmap"),
     breakdownList: document.querySelector("#breakdownList"),
@@ -137,10 +138,10 @@ function bindElements() {
     exportOverlayButton: document.querySelector("#exportOverlayButton"),
     toggleOpacityPlaybackButton: document.querySelector("#toggleOpacityPlaybackButton"),
     exportOverlayFullscreenButton: document.querySelector("#exportOverlayFullscreenButton"),
+    overlayNudge: document.querySelector(".overlay-nudge"),
     undoOverlayButton: document.querySelector("#undoOverlayButton"),
     redoOverlayButton: document.querySelector("#redoOverlayButton"),
     resetOverlayButton: document.querySelector("#resetOverlayButton"),
-    closeOverlayButton: document.querySelector("#closeOverlayButton"),
     traceToggle: document.querySelector("#traceToggle"),
     traceThresholdControl: document.querySelector("#traceThresholdControl"),
     overlayLockToggle: document.querySelector("#overlayLockToggle"),
@@ -150,6 +151,9 @@ function bindElements() {
     textSizeSelect: document.querySelector("#textSizeSelect"),
     themeSelect: document.querySelector("#themeSelect"),
     opacityPlaybackIntervalSelect: document.querySelector("#opacityPlaybackIntervalSelect"),
+    goalAmountInput: document.querySelector("#goalAmountInput"),
+    goalTypeSelect: document.querySelector("#goalTypeSelect"),
+    goalPeriodSelect: document.querySelector("#goalPeriodSelect"),
     defaultTraceColorInputs: document.querySelectorAll("input[name='defaultTraceColor']"),
   });
 }
@@ -182,6 +186,10 @@ function loadUiPrefs() {
     const interval = String(prefs.opacityPlaybackInterval || 400);
     els.opacityPlaybackIntervalSelect.value = ["800", "400", "200", "100"].includes(interval) ? interval : "400";
   }
+  const goal = normalizeGoal(prefs.goal);
+  if (els.goalAmountInput) els.goalAmountInput.value = goal.amount;
+  if (els.goalTypeSelect) els.goalTypeSelect.value = goal.type;
+  if (els.goalPeriodSelect) els.goalPeriodSelect.value = goal.period;
   syncDefaultTraceColorControls();
   syncTraceColorControls();
   renderLastExported(prefs.lastExportedAt || "");
@@ -198,6 +206,7 @@ function saveUiPrefs() {
     textSize: els.textSizeSelect ? els.textSizeSelect.value : previous.textSize || "default",
     theme: els.themeSelect ? els.themeSelect.value : previous.theme || "dark",
     opacityPlaybackInterval: els.opacityPlaybackIntervalSelect ? Number(els.opacityPlaybackIntervalSelect.value) : previous.opacityPlaybackInterval || 400,
+    goal: currentGoalSettings(),
     defaultTraceColor: state.defaultTraceColor,
     overlayLocked: state.overlayLocked,
   }));
@@ -348,6 +357,13 @@ function setupForm() {
   if (els.statsRangeSelect) {
     els.statsRangeSelect.addEventListener("change", renderStats);
   }
+  [els.goalAmountInput, els.goalTypeSelect, els.goalPeriodSelect].forEach((control) => {
+    if (!control) return;
+    control.addEventListener("input", () => {
+      saveUiPrefs();
+      renderStats();
+    });
+  });
 
   els.newArtworkButton.addEventListener("click", resetForm);
   els.newProjectButton.addEventListener("click", () => {
@@ -581,14 +597,7 @@ function setupOverlay() {
   els.exportOverlayFullscreenButton.addEventListener("click", exportOverlayImage);
   els.undoOverlayButton.addEventListener("click", undoOverlay);
   if (els.redoOverlayButton) els.redoOverlayButton.addEventListener("click", redoOverlay);
-  if (els.closeOverlayButton) {
-    els.closeOverlayButton.addEventListener("click", () => {
-      if (document.querySelector("#view-overlay").classList.contains("overlay-fullscreen")) toggleOverlayFullscreen();
-      stopOpacityPlayback();
-      saveCurrentOverlayPosition();
-      activateTab("projects");
-    });
-  }
+  if (els.overlayNudge) els.overlayNudge.addEventListener("click", handleOverlayNudge);
   els.overlayArtwork.addEventListener("change", () => {
     state.selectedOverlayArtworkId = els.overlayArtwork.value;
     renderOverlayImageOptions();
@@ -624,15 +633,6 @@ function setupOverlay() {
       setOverlayOpacity(Number(input.value));
     });
   });
-  if (els.overlayOpacityField) {
-    els.overlayOpacityField.addEventListener("click", (event) => {
-      const label = event.target.closest("label");
-      const input = label ? label.querySelector("input[name='overlayOpacity']") : null;
-      if (!input) return;
-      input.checked = true;
-      setOverlayOpacity(Number(input.value));
-    });
-  }
 
   ["gesturestart", "gesturechange", "gestureend"].forEach((eventName) => {
     document.addEventListener(eventName, preventBrowserZoom, { passive: false });
@@ -677,6 +677,32 @@ function setupOverlay() {
   });
 
   setupLockedOverlayZoom();
+}
+
+function handleOverlayNudge(event) {
+  const button = event.target.closest("[data-nudge]");
+  if (!button) return;
+  event.preventDefault();
+  pushOverlayHistory();
+  clearOverlayRedoHistory();
+  const step = event.shiftKey ? 10 : 2;
+  const action = button.dataset.nudge;
+  if (action === "up") state.overlay.y -= step;
+  if (action === "down") state.overlay.y += step;
+  if (action === "left") state.overlay.x -= step;
+  if (action === "right") state.overlay.x += step;
+  if (action === "scale-up" || action === "scale-down") {
+    const multiplier = action === "scale-up" ? 1.02 : 0.98;
+    const aspect = state.overlay.height / state.overlay.width;
+    state.overlay.width = Math.max(80, state.overlay.width * multiplier);
+    state.overlay.height = state.overlay.width * aspect;
+  }
+  if (action === "rotate-left") state.overlay.rotate = clamp(state.overlay.rotate - 1, -180, 180);
+  if (action === "rotate-right") state.overlay.rotate = clamp(state.overlay.rotate + 1, -180, 180);
+  clampOverlayToStage();
+  syncOverlayControls();
+  applyOverlayTransform();
+  saveCurrentOverlayPosition();
 }
 
 function setupLockedOverlayZoom() {
@@ -725,8 +751,8 @@ function toggleOverlayFullscreen() {
   const baseSpace = overlayToBaseSpace();
   const isFullscreen = view.classList.toggle("overlay-fullscreen");
   document.body.classList.toggle("overlay-fullscreen-active", isFullscreen);
-  els.toggleOverlayFullscreenButton.textContent = isFullscreen ? "×" : "⛶";
-  els.toggleOverlayFullscreenButton.setAttribute("aria-label", isFullscreen ? "Exit full screen" : "Full screen overlay");
+  els.toggleOverlayFullscreenButton.textContent = "⛶";
+  els.toggleOverlayFullscreenButton.setAttribute("aria-label", "Full screen overlay");
   setTimeout(() => {
     if (baseSpace) applyBaseSpace(baseSpace);
     clampOverlayToStage();
@@ -1272,6 +1298,7 @@ function compareCards(a, b, sort) {
 
 function renderStats() {
   const range = statsDateRange(els.statsRangeSelect ? els.statsRangeSelect.value : "last-30");
+  const goal = currentGoalSettings();
   const artworksInRange = state.artworks.filter((art) => dateInRange(art.date || art.createdAt, range));
   const sessionsInRange = [];
   state.artworks.forEach((art) => {
@@ -1298,16 +1325,10 @@ function renderStats() {
   ].join("");
 
   if (els.statsInsight) {
-    let message = "Add a few sessions and the app will start showing useful patterns here.";
-    if (sessionsInRange.length || artworksInRange.length) {
-      const focus = topMedium !== "Unspecified" ? topMedium : topSubject;
-      const focusText = focus !== "Unspecified" ? ` ${focus} is your most worked category.` : "";
-      message = `You have logged ${timeParts.hours} hours and ${timeParts.minutes} minutes across ${artworksInRange.length} pieces in this range.${focusText}`;
-    }
-    els.statsInsight.textContent = message;
+    els.statsInsight.textContent = goalStatusText(goal);
   }
 
-  renderHeatmap(range);
+  renderHeatmap(range, goal);
   renderBreakdown(sessionsInRange);
   renderSubjectBreakdown(sessionsInRange);
 }
@@ -1323,26 +1344,131 @@ function splitMinutes(minutes) {
   };
 }
 
-function renderHeatmap(range = statsDateRange("last-30")) {
-  const minutesByDay = new Map();
+function normalizeGoal(goal = {}) {
+  const type = ["times", "minutes", "hours"].includes(goal.type) ? goal.type : "hours";
+  const period = ["daily", "weekly", "monthly"].includes(goal.period) ? goal.period : "weekly";
+  const amount = Math.max(1, Number(goal.amount) || 3);
+  return { amount, type, period };
+}
+
+function currentGoalSettings() {
+  return normalizeGoal({
+    amount: els.goalAmountInput ? els.goalAmountInput.value : 3,
+    type: els.goalTypeSelect ? els.goalTypeSelect.value : "hours",
+    period: els.goalPeriodSelect ? els.goalPeriodSelect.value : "weekly",
+  });
+}
+
+function goalStatusText(goal) {
+  const period = currentGoalPeriod(goal.period);
+  const sessions = [];
+  state.artworks.forEach((art) => {
+    art.sessions.forEach((session) => {
+      if (dateInRange(session.date, period)) sessions.push(session);
+    });
+  });
+  const progress = sessions.reduce((sum, session) => sum + sessionGoalValue(session, goal.type), 0);
+  const remaining = Math.max(0, goal.amount - progress);
+  const complete = Math.min(100, Math.round((progress / goal.amount) * 100));
+  const daysLeft = Math.max(0, Math.ceil((period.end - new Date()) / 86400000));
+  return remaining
+    ? `${formatGoalValue(progress, goal.type)} / ${formatGoalValue(goal.amount, goal.type)} complete (${complete}%). ${formatGoalValue(remaining, goal.type)} to go. ${daysLeft} ${daysLeft === 1 ? "day" : "days"} left.`
+    : `${formatGoalValue(progress, goal.type)} / ${formatGoalValue(goal.amount, goal.type)} complete. Goal reached with ${daysLeft} ${daysLeft === 1 ? "day" : "days"} left.`;
+}
+
+function currentGoalPeriod(period) {
+  const now = new Date();
+  if (period === "daily") return { start: startOfDay(now), end: endOfDay(now) };
+  if (period === "monthly") return { start: new Date(now.getFullYear(), now.getMonth(), 1), end: endOfDay(new Date(now.getFullYear(), now.getMonth() + 1, 0)) };
+  const start = startOfDay(now);
+  start.setDate(now.getDate() - now.getDay());
+  const end = endOfDay(new Date(start));
+  end.setDate(start.getDate() + 6);
+  return { start, end };
+}
+
+function sessionGoalValue(session, type) {
+  if (type === "times") return 1;
+  if (type === "hours") return Number(session.minutes || 0) / 60;
+  return Number(session.minutes || 0);
+}
+
+function formatGoalValue(value, type) {
+  if (type === "times") return `${Math.round(value)} ${Math.round(value) === 1 ? "time" : "times"}`;
+  if (type === "hours") return `${formatNumber(value)} hr`;
+  return `${Math.round(value)} min`;
+}
+
+function goalLabel(type) {
+  if (type === "times") return "sessions";
+  if (type === "hours") return "hours";
+  return "minutes";
+}
+
+function formatNumber(value) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function niceRound(value) {
+  return Math.max(1, Math.ceil(value));
+}
+
+function goalBuckets(range, goal) {
+  const buckets = [];
+  const start = startOfGoalUnit(range.start, goal.period);
+  const end = range.end || new Date();
+  const cursor = new Date(start);
+  while (cursor <= end && buckets.length < 60) {
+    const unit = goalUnitForDate(cursor, goal.period);
+    buckets.push(unit);
+    if (goal.period === "monthly") cursor.setMonth(cursor.getMonth() + 1, 1);
+    else cursor.setDate(cursor.getDate() + (goal.period === "weekly" ? 7 : 1));
+  }
+  return buckets.length ? buckets : [goalUnitForDate(new Date(), goal.period)];
+}
+
+function goalUnitForDate(value, period) {
+  const date = value instanceof Date ? value : new Date(value);
+  const start = startOfGoalUnit(date, period);
+  return {
+    key: start.toISOString().slice(0, 10),
+    label: goalUnitLabel(start, period),
+  };
+}
+
+function startOfGoalUnit(date, period) {
+  const start = startOfDay(date);
+  if (period === "monthly") return new Date(start.getFullYear(), start.getMonth(), 1);
+  if (period === "weekly") {
+    start.setDate(start.getDate() - start.getDay());
+  }
+  return start;
+}
+
+function goalUnitLabel(date, period) {
+  if (period === "monthly") return date.toLocaleDateString([], { month: "short" });
+  if (period === "weekly") return `${date.getMonth() + 1}/${date.getDate()}`;
+  return `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+function shouldShowGoalLabel(index, length, period) {
+  if (period !== "daily") return true;
+  return index % Math.max(1, Math.ceil(length / 5)) === 0 || index === length - 1;
+}
+
+function renderHeatmap(range = statsDateRange("last-30"), goal = currentGoalSettings()) {
+  const units = goalBuckets(range, goal);
+  const valuesByKey = new Map(units.map((unit) => [unit.key, 0]));
   state.artworks.forEach((art) => {
     art.sessions.forEach((session) => {
       if (!dateInRange(session.date, range)) return;
-      minutesByDay.set(session.date, (minutesByDay.get(session.date) || 0) + Number(session.minutes || 0));
+      const unit = goalUnitForDate(session.date, goal.period);
+      if (!valuesByKey.has(unit.key)) return;
+      valuesByKey.set(unit.key, valuesByKey.get(unit.key) + sessionGoalValue(session, goal.type));
     });
   });
-
-  const end = range.end || new Date();
-  const spanDays = Math.min(45, Math.max(7, Math.ceil((end - range.start) / 86400000) + 1 || 14));
-  const days = [];
-  for (let i = spanDays - 1; i >= 0; i -= 1) {
-    const date = new Date(end);
-    date.setDate(end.getDate() - i);
-    const key = date.toISOString().slice(0, 10);
-    const minutes = minutesByDay.get(key) || 0;
-    days.push({ key, label: `${date.getMonth() + 1}/${date.getDate()}`, minutes });
-  }
-  const maxMinutes = Math.max(30, ...days.map((day) => day.minutes));
+  const days = units.map((unit) => ({ ...unit, value: valuesByKey.get(unit.key) || 0 }));
+  const maxValue = Math.max(goal.amount, ...days.map((day) => day.value), goal.type === "times" ? 1 : 30);
   const width = 360;
   const height = 210;
   const pad = { top: 18, right: 14, bottom: 42, left: 38 };
@@ -1350,21 +1476,21 @@ function renderHeatmap(range = statsDateRange("last-30")) {
   const plotHeight = height - pad.top - pad.bottom;
   const barGap = 5;
   const barWidth = (plotWidth - barGap * (days.length - 1)) / days.length;
-  const yTicks = [0, Math.round(maxMinutes / 2), maxMinutes];
+  const yTicks = [0, niceRound(maxValue / 2), niceRound(maxValue)];
   const bars = days.map((day, index) => {
-    const barHeight = day.minutes ? Math.max(4, (day.minutes / maxMinutes) * plotHeight) : 1;
+    const barHeight = day.value ? Math.max(4, (day.value / maxValue) * plotHeight) : 1;
     const x = pad.left + index * (barWidth + barGap);
     const y = pad.top + plotHeight - barHeight;
     return `
       <g>
         <rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barHeight.toFixed(1)}" rx="4" />
-        <title>${day.key}: ${day.minutes} minutes</title>
-        ${index % 3 === 0 || index === days.length - 1 ? `<text class="x-label" x="${(x + barWidth / 2).toFixed(1)}" y="${height - 13}" text-anchor="middle">${escapeHtml(day.label)}</text>` : ""}
+        <title>${day.key}: ${formatGoalValue(day.value, goal.type)}</title>
+        ${shouldShowGoalLabel(index, days.length, goal.period) ? `<text class="x-label" x="${(x + barWidth / 2).toFixed(1)}" y="${height - 13}" text-anchor="middle">${escapeHtml(day.label)}</text>` : ""}
       </g>
     `;
   }).join("");
   const ticks = yTicks.map((tick) => {
-    const y = pad.top + plotHeight - (tick / maxMinutes) * plotHeight;
+    const y = pad.top + plotHeight - (tick / maxValue) * plotHeight;
     return `
       <g>
         <line x1="${pad.left}" y1="${y.toFixed(1)}" x2="${width - pad.right}" y2="${y.toFixed(1)}" />
@@ -1373,12 +1499,13 @@ function renderHeatmap(range = statsDateRange("last-30")) {
     `;
   }).join("");
   els.heatmap.innerHTML = `
-    <svg class="minutes-day-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Minutes practiced per day for selected date range">
+    <svg class="minutes-day-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${goalLabel(goal.type)} by ${goal.period} for selected date range">
       <g class="y-grid">${ticks}</g>
       <g class="bars">${bars}</g>
-      <text class="axis-label" x="12" y="${pad.top + 10}" transform="rotate(-90 12 ${pad.top + 10})">minutes</text>
+      <text class="axis-label" x="12" y="${pad.top + 10}" transform="rotate(-90 12 ${pad.top + 10})">${escapeHtml(goalLabel(goal.type))}</text>
     </svg>
   `;
+  if (els.goalChartTitle) els.goalChartTitle.textContent = `${goalLabel(goal.type)} / ${goal.period}`;
 }
 
 function renderTrend() {
