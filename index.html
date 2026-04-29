@@ -10,7 +10,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=22" />
+    <link rel="stylesheet" href="styles.css?v=23" />
   </head>
   <body>
     <main class="app-shell">
@@ -398,6 +398,37 @@
       </section>
 
       <section class="view" id="view-overlay" aria-labelledby="tab-overlay">
+        <div class="study-switch panel" role="tablist" aria-label="Study mode">
+          <button class="active" type="button" data-study-mode="reference">Reference</button>
+          <button type="button" data-study-mode="overlay">Overlay</button>
+          <button type="button" data-study-mode="compare">Compare</button>
+        </div>
+
+        <section class="reference-study panel" id="referenceStudyPanel">
+          <div class="reference-study-actions">
+            <label class="file-drop reference-upload">
+              <span>Choose reference</span>
+              <input id="studyReferenceInput" type="file" accept="image/*,.heic,.heif" />
+            </label>
+            <button class="secondary" type="button" id="saveReferenceProjectButton">Save as project</button>
+          </div>
+          <label>
+            Project title
+            <input id="studyProjectTitleInput" placeholder="Sunday portrait study" />
+          </label>
+          <p class="upload-status" id="studyReferenceStatus"></p>
+          <div class="analysis-compare reference-analysis-grid" aria-label="Reference analysis">
+            <div class="analysis-pane">
+              <span>Original</span>
+              <img id="referenceOriginalPreview" alt="Original reference" />
+            </div>
+            <div class="analysis-pane">
+              <span>Analysis</span>
+              <canvas id="referenceStudyCanvas"></canvas>
+            </div>
+          </div>
+        </section>
+
         <section class="overlay-stage" id="overlayStage">
           <div class="overlay-stage-toolbar">
             <label class="toggle-row overlay-lock-inline"><input id="overlayLockToggle" type="checkbox" /> Lock overlay</label>
@@ -459,10 +490,12 @@
                 <option value="value">Value study</option>
                 <option value="posterize">Simple color</option>
                 <option value="value-steps">Value steps</option>
+                <option value="notan">Notan</option>
+                <option value="palette">Palette</option>
                 <option value="blur">Squint blur</option>
               </select>
             </label>
-            <label>
+            <label id="compareViewWrap">
               Compare view
               <select id="compareViewSelect">
                 <option value="overlay">Overlay</option>
@@ -471,9 +504,17 @@
             </label>
           </div>
           <label class="analysis-control" data-analysis-control="trace">Trace detail <input id="traceThresholdControl" type="range" min="15" max="90" value="38" /></label>
-          <label class="analysis-control" data-analysis-control="posterize">Color steps <input id="posterizeLevelControl" type="range" min="3" max="9" value="5" /></label>
+          <label class="analysis-control" data-analysis-control="posterize">Color steps <input id="posterizeLevelControl" type="range" min="2" max="9" value="4" /></label>
           <label class="analysis-control" data-analysis-control="value-steps">Value steps <input id="valueLevelControl" type="range" min="2" max="9" value="5" /></label>
+          <label class="analysis-control" data-analysis-control="notan">Notan threshold <input id="notanThresholdControl" type="range" min="5" max="95" value="50" /></label>
+          <label class="analysis-control" data-analysis-control="palette">Palette count <input id="paletteCountControl" type="range" min="2" max="10" value="5" /></label>
           <label class="analysis-control" data-analysis-control="blur">Blur amount <input id="blurAmountControl" type="range" min="1" max="18" value="8" /></label>
+          <label class="analysis-control analysis-cleanup" data-analysis-cleanup>Cleanup <input id="cleanupControl" type="range" min="0" max="4" value="1" /></label>
+          <label class="analysis-control analysis-cleanup" data-analysis-cleanup>Merge similar colors <input id="mergeThresholdControl" type="range" min="0" max="80" value="18" /></label>
+          <div class="analysis-grid analysis-cleanup" data-analysis-adjust>
+            <label>Saturation <input id="saturationControl" type="range" min="0" max="200" value="110" /></label>
+            <label>Contrast <input id="contrastControl" type="range" min="50" max="180" value="110" /></label>
+          </div>
           <fieldset class="color-field">
             <legend>Trace color</legend>
             <label style="--swatch:#ff3b30"><input type="radio" name="traceColor" value="#ff3b30" /><span>Red</span></label>
@@ -544,7 +585,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=22"></script>
+    <script src="app.js?v=23"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");

@@ -31,6 +31,8 @@ const state = {
   traceColor: DEFAULT_TRACE_COLOR,
   analysisMode: "trace",
   compareView: "overlay",
+  studyMode: "reference",
+  studyReferenceDataUrl: "",
   overlay: { ...DEFAULT_OVERLAY },
 };
 
@@ -134,6 +136,15 @@ function bindElements() {
     subjectBreakdownList: document.querySelector("#subjectBreakdownList"),
     overlayArtwork: document.querySelector("#overlayArtwork"),
     overlayImage: document.querySelector("#overlayImage"),
+    studyModeButtons: document.querySelectorAll("[data-study-mode]"),
+    referenceStudyPanel: document.querySelector("#referenceStudyPanel"),
+    studyReferenceInput: document.querySelector("#studyReferenceInput"),
+    studyProjectTitleInput: document.querySelector("#studyProjectTitleInput"),
+    studyReferenceStatus: document.querySelector("#studyReferenceStatus"),
+    saveReferenceProjectButton: document.querySelector("#saveReferenceProjectButton"),
+    referenceOriginalPreview: document.querySelector("#referenceOriginalPreview"),
+    referenceStudyCanvas: document.querySelector("#referenceStudyCanvas"),
+    compareViewWrap: document.querySelector("#compareViewWrap"),
     referenceLayer: document.querySelector("#referenceLayer"),
     artworkBaseLayer: document.querySelector("#artworkBaseLayer"),
     compareFrame: document.querySelector("#compareFrame"),
@@ -156,7 +167,13 @@ function bindElements() {
     traceThresholdControl: document.querySelector("#traceThresholdControl"),
     posterizeLevelControl: document.querySelector("#posterizeLevelControl"),
     valueLevelControl: document.querySelector("#valueLevelControl"),
+    notanThresholdControl: document.querySelector("#notanThresholdControl"),
+    paletteCountControl: document.querySelector("#paletteCountControl"),
     blurAmountControl: document.querySelector("#blurAmountControl"),
+    cleanupControl: document.querySelector("#cleanupControl"),
+    mergeThresholdControl: document.querySelector("#mergeThresholdControl"),
+    saturationControl: document.querySelector("#saturationControl"),
+    contrastControl: document.querySelector("#contrastControl"),
     analysisComparePanel: document.querySelector("#analysisComparePanel"),
     analysisReferenceCanvas: document.querySelector("#analysisReferenceCanvas"),
     analysisArtworkCanvas: document.querySelector("#analysisArtworkCanvas"),
@@ -208,15 +225,24 @@ function loadUiPrefs() {
   if (els.goalPeriodSelect) els.goalPeriodSelect.value = goal.period;
   state.analysisMode = normalizeAnalysisMode(prefs.analysisMode);
   state.compareView = normalizeCompareView(prefs.compareView);
+  state.studyMode = normalizeStudyMode(prefs.studyMode);
   if (els.analysisModeSelect) els.analysisModeSelect.value = state.analysisMode;
   if (els.compareViewSelect) els.compareViewSelect.value = state.compareView;
   if (els.traceThresholdControl) els.traceThresholdControl.value = clamp(Number(prefs.traceDetail) || 38, 15, 90);
-  if (els.posterizeLevelControl) els.posterizeLevelControl.value = clamp(Number(prefs.posterizeLevels) || 5, 3, 9);
+  if (els.posterizeLevelControl) els.posterizeLevelControl.value = clamp(Number(prefs.posterizeLevels) || 4, 2, 9);
   if (els.valueLevelControl) els.valueLevelControl.value = clamp(Number(prefs.valueLevels) || 5, 2, 9);
+  if (els.notanThresholdControl) els.notanThresholdControl.value = clamp(Number(prefs.notanThreshold) || 50, 5, 95);
+  if (els.paletteCountControl) els.paletteCountControl.value = clamp(Number(prefs.paletteCount) || 5, 2, 10);
   if (els.blurAmountControl) els.blurAmountControl.value = clamp(Number(prefs.blurAmount) || 8, 1, 18);
+  if (els.cleanupControl) els.cleanupControl.value = clamp(Number(prefs.cleanup) || 1, 0, 4);
+  if (els.mergeThresholdControl) els.mergeThresholdControl.value = clamp(Number(prefs.mergeThreshold) || 18, 0, 80);
+  if (els.saturationControl) els.saturationControl.value = clamp(Number(prefs.saturation) || 110, 0, 200);
+  if (els.contrastControl) els.contrastControl.value = clamp(Number(prefs.contrast) || 110, 50, 180);
   syncDefaultTraceColorControls();
   syncTraceColorControls();
   syncAnalysisControls();
+  syncStudyMode();
+  renderReferenceStudy();
   renderLastExported(prefs.lastExportedAt || "");
   state.overlayLocked = Boolean(prefs.overlayLocked);
   if (els.overlayLockToggle) els.overlayLockToggle.checked = state.overlayLocked;
@@ -236,10 +262,17 @@ function saveUiPrefs() {
     overlayLocked: state.overlayLocked,
     analysisMode: state.analysisMode,
     compareView: state.compareView,
+    studyMode: state.studyMode,
     traceDetail: els.traceThresholdControl ? Number(els.traceThresholdControl.value) : previous.traceDetail || 38,
-    posterizeLevels: els.posterizeLevelControl ? Number(els.posterizeLevelControl.value) : previous.posterizeLevels || 5,
+    posterizeLevels: els.posterizeLevelControl ? Number(els.posterizeLevelControl.value) : previous.posterizeLevels || 4,
     valueLevels: els.valueLevelControl ? Number(els.valueLevelControl.value) : previous.valueLevels || 5,
+    notanThreshold: els.notanThresholdControl ? Number(els.notanThresholdControl.value) : previous.notanThreshold || 50,
+    paletteCount: els.paletteCountControl ? Number(els.paletteCountControl.value) : previous.paletteCount || 5,
     blurAmount: els.blurAmountControl ? Number(els.blurAmountControl.value) : previous.blurAmount || 8,
+    cleanup: els.cleanupControl ? Number(els.cleanupControl.value) : previous.cleanup || 1,
+    mergeThreshold: els.mergeThresholdControl ? Number(els.mergeThresholdControl.value) : previous.mergeThreshold || 18,
+    saturation: els.saturationControl ? Number(els.saturationControl.value) : previous.saturation || 110,
+    contrast: els.contrastControl ? Number(els.contrastControl.value) : previous.contrast || 110,
   }));
 }
 
@@ -656,6 +689,22 @@ function setupFilters() {
 }
 
 function setupOverlay() {
+  toArray(els.studyModeButtons || []).forEach((button) => {
+    button.addEventListener("click", () => {
+      state.studyMode = normalizeStudyMode(button.dataset.studyMode);
+      if (state.studyMode === "compare") state.compareView = "side-by-side";
+      syncStudyMode();
+      saveUiPrefs();
+      renderReferenceStudy();
+      renderAnalysisCompare();
+    });
+  });
+  if (els.studyReferenceInput) {
+    els.studyReferenceInput.addEventListener("change", handleStudyReferenceUpload);
+  }
+  if (els.saveReferenceProjectButton) {
+    els.saveReferenceProjectButton.addEventListener("click", saveStudyReferenceAsProject);
+  }
   els.toggleOverlayFullscreenButton.addEventListener("click", toggleOverlayFullscreen);
   els.exitOverlayFullscreenButton.addEventListener("click", () => {
     if (document.querySelector("#view-overlay").classList.contains("overlay-fullscreen")) toggleOverlayFullscreen();
@@ -693,6 +742,7 @@ function setupOverlay() {
       saveUiPrefs();
       renderReferenceTrace();
       renderAnalysisCompare();
+      renderReferenceStudy();
     });
   }
   if (els.compareViewSelect) {
@@ -701,14 +751,27 @@ function setupOverlay() {
       syncAnalysisControls();
       saveUiPrefs();
       renderAnalysisCompare();
+      renderReferenceStudy();
     });
   }
-  [els.traceThresholdControl, els.posterizeLevelControl, els.valueLevelControl, els.blurAmountControl].forEach((control) => {
+  [
+    els.traceThresholdControl,
+    els.posterizeLevelControl,
+    els.valueLevelControl,
+    els.notanThresholdControl,
+    els.paletteCountControl,
+    els.blurAmountControl,
+    els.cleanupControl,
+    els.mergeThresholdControl,
+    els.saturationControl,
+    els.contrastControl,
+  ].forEach((control) => {
     if (!control) return;
     control.addEventListener("input", () => {
       saveUiPrefs();
       renderReferenceTrace();
       renderAnalysisCompare();
+      renderReferenceStudy();
     });
   });
   if (els.overlayLockToggle) {
@@ -726,6 +789,7 @@ function setupOverlay() {
       saveUiPrefs();
       renderReferenceTrace();
       renderAnalysisCompare();
+      renderReferenceStudy();
     });
   });
   toArray(els.overlayOpacityInputs).forEach((input) => {
@@ -803,6 +867,85 @@ function handleOverlayNudge(event) {
   syncOverlayControls();
   applyOverlayTransform();
   saveCurrentOverlayPosition({ quiet: true });
+}
+
+async function handleStudyReferenceUpload() {
+  const file = els.studyReferenceInput.files[0];
+  if (!file) return;
+  if (isHeic(file)) {
+    if (els.studyReferenceStatus) els.studyReferenceStatus.textContent = "HEIC is not decoded in this browser version. Please use JPEG or PNG.";
+    return;
+  }
+  const dataUrl = await readFileAsDataUrl(file);
+  state.studyReferenceDataUrl = dataUrl;
+  if (!els.studyProjectTitleInput.value.trim()) {
+    const name = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ");
+    els.studyProjectTitleInput.value = name || "Untitled reference";
+  }
+  if (els.studyReferenceStatus) els.studyReferenceStatus.textContent = "";
+  saveUiPrefs();
+  renderReferenceStudy();
+}
+
+function saveStudyReferenceAsProject() {
+  const dataUrl = currentStudyReferenceDataUrl();
+  if (!dataUrl) {
+    setAppStatus("Choose a reference image first.");
+    return;
+  }
+  const title = els.studyProjectTitleInput.value.trim() || "Untitled reference";
+  const today = todayKey();
+  const artwork = {
+    id: createId(),
+    title,
+    date: today,
+    minutes: 0,
+    sessions: [],
+    overallRating: 0,
+    medium: "Oil",
+    surface: "Paper",
+    size: "5 x 7 in",
+    subject: "Portrait",
+    notes: "",
+    images: [
+      { name: "Reference", rating: 0, dataUrl },
+      { name: "Final artwork", rating: 0, dataUrl: "" },
+      { name: "Block-in", rating: 0, dataUrl: "" },
+      { name: "30 mins", rating: 0, dataUrl: "" },
+    ],
+    overlayPositions: {},
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  state.artworks.unshift(artwork);
+  state.selectedProjectId = artwork.id;
+  state.selectedOverlayArtworkId = artwork.id;
+  saveData();
+  renderAll();
+  setAppStatus(`Saved ${title} as a project.`);
+}
+
+function currentStudyReferenceDataUrl() {
+  if (state.studyReferenceDataUrl) return state.studyReferenceDataUrl;
+  const artwork = currentOverlayArtwork();
+  const reference = artwork && artwork.images.find((image) => image.name === "Reference" && image.dataUrl);
+  return reference ? reference.dataUrl : "";
+}
+
+function renderReferenceStudy() {
+  if (!els.referenceOriginalPreview || !els.referenceStudyCanvas) return;
+  const dataUrl = currentStudyReferenceDataUrl();
+  if (!dataUrl) {
+    els.referenceOriginalPreview.removeAttribute("src");
+    clearCanvas(els.referenceStudyCanvas);
+    return;
+  }
+  if (els.referenceOriginalPreview.src !== dataUrl) els.referenceOriginalPreview.src = dataUrl;
+  if (els.referenceOriginalPreview.complete && els.referenceOriginalPreview.naturalWidth) {
+    renderAnalysisToCanvas(els.referenceOriginalPreview, els.referenceStudyCanvas, { mode: state.analysisMode });
+  } else {
+    els.referenceOriginalPreview.onload = () => renderAnalysisToCanvas(els.referenceOriginalPreview, els.referenceStudyCanvas, { mode: state.analysisMode });
+  }
 }
 
 function setupLockedOverlayZoom() {
@@ -1861,6 +2004,7 @@ function renderOverlayImages() {
   if (!reference) clearTrace();
   if (reference && els.referenceLayer.complete) renderReferenceTrace();
   renderAnalysisCompare();
+  renderReferenceStudy();
   clampOverlayToStage();
   applyOverlayMode();
   applyOverlayTransform();
@@ -2050,11 +2194,15 @@ function syncDefaultTraceColorControls() {
 }
 
 function normalizeAnalysisMode(value) {
-  return ["trace", "value", "posterize", "value-steps", "blur"].includes(value) ? value : "trace";
+  return ["trace", "value", "posterize", "value-steps", "notan", "palette", "blur"].includes(value) ? value : "trace";
 }
 
 function normalizeCompareView(value) {
   return value === "side-by-side" ? "side-by-side" : "overlay";
+}
+
+function normalizeStudyMode(value) {
+  return ["reference", "overlay", "compare"].includes(value) ? value : "reference";
 }
 
 function syncAnalysisControls() {
@@ -2066,8 +2214,16 @@ function syncAnalysisControls() {
     control.classList.toggle("hidden", control.dataset.analysisControl !== state.analysisMode);
   });
   if (els.analysisComparePanel) {
-    els.analysisComparePanel.classList.toggle("hidden", state.compareView !== "side-by-side");
+    els.analysisComparePanel.classList.toggle("hidden", state.studyMode !== "compare");
   }
+  if (els.compareViewWrap) els.compareViewWrap.classList.toggle("hidden", state.studyMode !== "overlay");
+  const cleanupModes = ["posterize", "value-steps", "notan", "palette"];
+  toArray(document.querySelectorAll("[data-analysis-cleanup]")).forEach((control) => {
+    control.classList.toggle("hidden", !cleanupModes.includes(state.analysisMode));
+  });
+  toArray(document.querySelectorAll("[data-analysis-adjust]")).forEach((control) => {
+    control.classList.toggle("hidden", state.analysisMode === "trace");
+  });
   if (els.traceToggle) {
     const label = els.traceToggle.closest("label");
     if (label) {
@@ -2075,6 +2231,18 @@ function syncAnalysisControls() {
       label.lastChild.textContent = ` Show ${name}`;
     }
   }
+}
+
+function syncStudyMode() {
+  state.studyMode = normalizeStudyMode(state.studyMode);
+  toArray(els.studyModeButtons || []).forEach((button) => {
+    button.classList.toggle("active", button.dataset.studyMode === state.studyMode);
+  });
+  if (els.referenceStudyPanel) els.referenceStudyPanel.classList.toggle("hidden", state.studyMode !== "reference");
+  if (els.overlayStage) els.overlayStage.classList.toggle("hidden", state.studyMode !== "overlay");
+  if (els.overlayNudge) els.overlayNudge.classList.toggle("hidden", state.studyMode !== "overlay");
+  if (els.analysisComparePanel) els.analysisComparePanel.classList.toggle("hidden", state.studyMode !== "compare");
+  syncAnalysisControls();
 }
 
 function renderLastExported(value) {
@@ -2185,6 +2353,11 @@ function renderAnalysisToCanvas(source, canvas, options = {}) {
   const yEnd = Math.min(size.height, Math.ceil(rect.y + rect.height));
   const colorLevels = Number(els.posterizeLevelControl ? els.posterizeLevelControl.value : 5) || 5;
   const valueLevels = Number(els.valueLevelControl ? els.valueLevelControl.value : 5) || 5;
+  const notanThreshold = (Number(els.notanThresholdControl ? els.notanThresholdControl.value : 50) || 50) * 2.55;
+  const paletteCount = Number(els.paletteCountControl ? els.paletteCountControl.value : 5) || 5;
+  const saturation = (Number(els.saturationControl ? els.saturationControl.value : 100) || 100) / 100;
+  const contrast = (Number(els.contrastControl ? els.contrastControl.value : 100) || 100) / 100;
+  const mergeThreshold = Number(els.mergeThresholdControl ? els.mergeThresholdControl.value : 0) || 0;
 
   for (let y = 0; y < size.height; y += 1) {
     for (let x = 0; x < size.width; x += 1) {
@@ -2197,6 +2370,7 @@ function renderAnalysisToCanvas(source, canvas, options = {}) {
         data[index + 3] = 255;
         continue;
       }
+      adjustPixel(data, index, saturation, contrast);
       if (mode === "value") {
         const gray = luma(data[index], data[index + 1], data[index + 2]);
         data[index] = gray;
@@ -2211,11 +2385,130 @@ function renderAnalysisToCanvas(source, canvas, options = {}) {
         data[index] = gray;
         data[index + 1] = gray;
         data[index + 2] = gray;
+      } else if (mode === "notan") {
+        const value = luma(data[index], data[index + 1], data[index + 2]) >= notanThreshold ? 255 : 0;
+        data[index] = value;
+        data[index + 1] = value;
+        data[index + 2] = value;
       }
     }
   }
+  if (mode === "palette") {
+    applyPaletteQuantization(data, size.width, size.height, { xStart, yStart, xEnd, yEnd }, paletteCount);
+  }
+  if (mergeThreshold > 0 && ["posterize", "value-steps", "notan", "palette"].includes(mode)) {
+    mergeSimilarColors(data, size.width, size.height, { xStart, yStart, xEnd, yEnd }, mergeThreshold);
+  }
+  const cleanup = Number(els.cleanupControl ? els.cleanupControl.value : 0) || 0;
+  if (cleanup > 0 && ["posterize", "value-steps", "notan", "palette"].includes(mode)) {
+    cleanupColorSpeckles(data, size.width, size.height, { xStart, yStart, xEnd, yEnd }, cleanup);
+  }
   ctx.clearRect(0, 0, size.width, size.height);
   ctx.putImageData(image, 0, 0);
+}
+
+function adjustPixel(data, index, saturation, contrast) {
+  let red = data[index];
+  let green = data[index + 1];
+  let blue = data[index + 2];
+  red = (red - 128) * contrast + 128;
+  green = (green - 128) * contrast + 128;
+  blue = (blue - 128) * contrast + 128;
+  const gray = luma(red, green, blue);
+  data[index] = clampChannel(gray + (red - gray) * saturation);
+  data[index + 1] = clampChannel(gray + (green - gray) * saturation);
+  data[index + 2] = clampChannel(gray + (blue - gray) * saturation);
+}
+
+function applyPaletteQuantization(data, width, height, rect, count) {
+  const colors = samplePaletteColors(data, width, height, rect, clamp(count, 2, 10));
+  if (!colors.length) return;
+  for (let y = rect.yStart; y < rect.yEnd; y += 1) {
+    for (let x = rect.xStart; x < rect.xEnd; x += 1) {
+      const index = (y * width + x) * 4;
+      const nearest = nearestColor(data[index], data[index + 1], data[index + 2], colors);
+      data[index] = nearest[0];
+      data[index + 1] = nearest[1];
+      data[index + 2] = nearest[2];
+    }
+  }
+}
+
+function samplePaletteColors(data, width, height, rect, count) {
+  const samples = [];
+  const step = Math.max(1, Math.floor(Math.sqrt(((rect.xEnd - rect.xStart) * (rect.yEnd - rect.yStart)) / 900)));
+  for (let y = rect.yStart; y < rect.yEnd; y += step) {
+    for (let x = rect.xStart; x < rect.xEnd; x += step) {
+      const index = (y * width + x) * 4;
+      samples.push([data[index], data[index + 1], data[index + 2]]);
+    }
+  }
+  if (!samples.length) return [];
+  const colors = [];
+  for (let i = 0; i < count; i += 1) {
+    colors.push(samples[Math.floor((i / Math.max(1, count - 1)) * (samples.length - 1))].slice());
+  }
+  for (let iteration = 0; iteration < 6; iteration += 1) {
+    const buckets = colors.map(() => ({ sum: [0, 0, 0], count: 0 }));
+    samples.forEach((sample) => {
+      const nearestIndex = nearestColorIndex(sample[0], sample[1], sample[2], colors);
+      buckets[nearestIndex].sum[0] += sample[0];
+      buckets[nearestIndex].sum[1] += sample[1];
+      buckets[nearestIndex].sum[2] += sample[2];
+      buckets[nearestIndex].count += 1;
+    });
+    buckets.forEach((bucket, index) => {
+      if (!bucket.count) return;
+      colors[index] = bucket.sum.map((value) => Math.round(value / bucket.count));
+    });
+  }
+  return colors;
+}
+
+function mergeSimilarColors(data, width, height, rect, threshold) {
+  const thresholdSquared = threshold * threshold;
+  const palette = [];
+  for (let y = rect.yStart; y < rect.yEnd; y += 1) {
+    for (let x = rect.xStart; x < rect.xEnd; x += 1) {
+      const index = (y * width + x) * 4;
+      const match = palette.find((color) => colorDistanceSquared(color, [data[index], data[index + 1], data[index + 2]]) <= thresholdSquared);
+      if (match) {
+        data[index] = match[0];
+        data[index + 1] = match[1];
+        data[index + 2] = match[2];
+      } else if (palette.length < 80) {
+        palette.push([data[index], data[index + 1], data[index + 2]]);
+      }
+    }
+  }
+}
+
+function cleanupColorSpeckles(data, width, height, rect, passes) {
+  for (let pass = 0; pass < passes; pass += 1) {
+    const copy = new Uint8ClampedArray(data);
+    for (let y = rect.yStart + 1; y < rect.yEnd - 1; y += 1) {
+      for (let x = rect.xStart + 1; x < rect.xEnd - 1; x += 1) {
+        const index = (y * width + x) * 4;
+        const current = colorKey(copy[index], copy[index + 1], copy[index + 2]);
+        const counts = {};
+        for (let yy = -1; yy <= 1; yy += 1) {
+          for (let xx = -1; xx <= 1; xx += 1) {
+            if (xx === 0 && yy === 0) continue;
+            const neighborIndex = ((y + yy) * width + (x + xx)) * 4;
+            const key = colorKey(copy[neighborIndex], copy[neighborIndex + 1], copy[neighborIndex + 2]);
+            counts[key] = (counts[key] || 0) + 1;
+          }
+        }
+        const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+        if (best && best[0] !== current && best[1] >= 4) {
+          const [red, green, blue] = best[0].split(",").map(Number);
+          data[index] = red;
+          data[index + 1] = green;
+          data[index + 2] = blue;
+        }
+      }
+    }
+  }
 }
 
 function renderTraceAnalysis(sourceCtx, targetCtx, size, rect, transparentTrace) {
@@ -2264,6 +2557,35 @@ function quantizeChannel(value, levels) {
 
 function luma(red, green, blue) {
   return red * 0.2126 + green * 0.7152 + blue * 0.0722;
+}
+
+function clampChannel(value) {
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function colorKey(red, green, blue) {
+  return `${red},${green},${blue}`;
+}
+
+function colorDistanceSquared(a, b) {
+  return ((a[0] - b[0]) ** 2) + ((a[1] - b[1]) ** 2) + ((a[2] - b[2]) ** 2);
+}
+
+function nearestColor(red, green, blue, colors) {
+  return colors[nearestColorIndex(red, green, blue, colors)] || [red, green, blue];
+}
+
+function nearestColorIndex(red, green, blue, colors) {
+  let bestIndex = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  colors.forEach((color, index) => {
+    const distance = colorDistanceSquared(color, [red, green, blue]);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+  });
+  return bestIndex;
 }
 
 function containRect(sourceWidth, sourceHeight, targetWidth, targetHeight) {
