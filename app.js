@@ -29,6 +29,8 @@ const state = {
   overlayStageZoom: { scale: 1, x: 0, y: 0 },
   defaultTraceColor: DEFAULT_TRACE_COLOR,
   traceColor: DEFAULT_TRACE_COLOR,
+  analysisMode: "trace",
+  compareView: "overlay",
   overlay: { ...DEFAULT_OVERLAY },
 };
 
@@ -149,7 +151,15 @@ function bindElements() {
     redoOverlayButton: document.querySelector("#redoOverlayButton"),
     resetOverlayButton: document.querySelector("#resetOverlayButton"),
     traceToggle: document.querySelector("#traceToggle"),
+    analysisModeSelect: document.querySelector("#analysisModeSelect"),
+    compareViewSelect: document.querySelector("#compareViewSelect"),
     traceThresholdControl: document.querySelector("#traceThresholdControl"),
+    posterizeLevelControl: document.querySelector("#posterizeLevelControl"),
+    valueLevelControl: document.querySelector("#valueLevelControl"),
+    blurAmountControl: document.querySelector("#blurAmountControl"),
+    analysisComparePanel: document.querySelector("#analysisComparePanel"),
+    analysisReferenceCanvas: document.querySelector("#analysisReferenceCanvas"),
+    analysisArtworkCanvas: document.querySelector("#analysisArtworkCanvas"),
     overlayLockToggle: document.querySelector("#overlayLockToggle"),
     traceColorInputs: document.querySelectorAll("input[name='traceColor']"),
     overlayOpacityInputs: document.querySelectorAll("input[name='overlayOpacity']"),
@@ -196,8 +206,17 @@ function loadUiPrefs() {
   if (els.goalAmountInput) els.goalAmountInput.value = goal.amount;
   if (els.goalTypeSelect) els.goalTypeSelect.value = goal.type;
   if (els.goalPeriodSelect) els.goalPeriodSelect.value = goal.period;
+  state.analysisMode = normalizeAnalysisMode(prefs.analysisMode);
+  state.compareView = normalizeCompareView(prefs.compareView);
+  if (els.analysisModeSelect) els.analysisModeSelect.value = state.analysisMode;
+  if (els.compareViewSelect) els.compareViewSelect.value = state.compareView;
+  if (els.traceThresholdControl) els.traceThresholdControl.value = clamp(Number(prefs.traceDetail) || 38, 15, 90);
+  if (els.posterizeLevelControl) els.posterizeLevelControl.value = clamp(Number(prefs.posterizeLevels) || 5, 3, 9);
+  if (els.valueLevelControl) els.valueLevelControl.value = clamp(Number(prefs.valueLevels) || 5, 3, 9);
+  if (els.blurAmountControl) els.blurAmountControl.value = clamp(Number(prefs.blurAmount) || 8, 1, 18);
   syncDefaultTraceColorControls();
   syncTraceColorControls();
+  syncAnalysisControls();
   renderLastExported(prefs.lastExportedAt || "");
   state.overlayLocked = Boolean(prefs.overlayLocked);
   if (els.overlayLockToggle) els.overlayLockToggle.checked = state.overlayLocked;
@@ -215,6 +234,12 @@ function saveUiPrefs() {
     goal: currentGoalSettings(),
     defaultTraceColor: state.defaultTraceColor,
     overlayLocked: state.overlayLocked,
+    analysisMode: state.analysisMode,
+    compareView: state.compareView,
+    traceDetail: els.traceThresholdControl ? Number(els.traceThresholdControl.value) : previous.traceDetail || 38,
+    posterizeLevels: els.posterizeLevelControl ? Number(els.posterizeLevelControl.value) : previous.posterizeLevels || 5,
+    valueLevels: els.valueLevelControl ? Number(els.valueLevelControl.value) : previous.valueLevels || 5,
+    blurAmount: els.blurAmountControl ? Number(els.blurAmountControl.value) : previous.blurAmount || 8,
   }));
 }
 
@@ -646,14 +671,45 @@ function setupOverlay() {
     renderOverlayImages();
   });
   els.overlayImage.addEventListener("change", renderOverlayImages);
-  els.referenceLayer.addEventListener("load", renderReferenceTrace);
+  els.referenceLayer.addEventListener("load", () => {
+    renderReferenceTrace();
+    renderAnalysisCompare();
+  });
   els.artworkBaseLayer.addEventListener("load", () => {
     if (state.overlay.baseSpace) applyBaseSpace(state.overlay.baseSpace);
     clampOverlayToStage();
     applyOverlayTransform();
+    renderAnalysisCompare();
   });
-  els.traceToggle.addEventListener("change", applyOverlayMode);
-  els.traceThresholdControl.addEventListener("input", renderReferenceTrace);
+  els.traceToggle.addEventListener("change", () => {
+    applyOverlayMode();
+    renderAnalysisCompare();
+  });
+  if (els.analysisModeSelect) {
+    els.analysisModeSelect.addEventListener("change", () => {
+      state.analysisMode = normalizeAnalysisMode(els.analysisModeSelect.value);
+      syncAnalysisControls();
+      saveUiPrefs();
+      renderReferenceTrace();
+      renderAnalysisCompare();
+    });
+  }
+  if (els.compareViewSelect) {
+    els.compareViewSelect.addEventListener("change", () => {
+      state.compareView = normalizeCompareView(els.compareViewSelect.value);
+      syncAnalysisControls();
+      saveUiPrefs();
+      renderAnalysisCompare();
+    });
+  }
+  [els.traceThresholdControl, els.posterizeLevelControl, els.valueLevelControl, els.blurAmountControl].forEach((control) => {
+    if (!control) return;
+    control.addEventListener("input", () => {
+      saveUiPrefs();
+      renderReferenceTrace();
+      renderAnalysisCompare();
+    });
+  });
   if (els.overlayLockToggle) {
   els.overlayLockToggle.addEventListener("change", () => {
       state.overlayLocked = els.overlayLockToggle.checked;
@@ -668,6 +724,7 @@ function setupOverlay() {
       syncDefaultTraceColorControls();
       saveUiPrefs();
       renderReferenceTrace();
+      renderAnalysisCompare();
     });
   });
   toArray(els.overlayOpacityInputs).forEach((input) => {
@@ -1789,6 +1846,8 @@ function renderOverlayImages() {
     els.artworkBaseLayer.src = "";
     els.tracePhotoLayer.src = "";
     clearTrace();
+    clearCanvas(els.analysisReferenceCanvas);
+    clearCanvas(els.analysisArtworkCanvas);
     return;
   }
   const reference = artwork.images.find((image) => image.name === "Reference");
@@ -1800,6 +1859,7 @@ function renderOverlayImages() {
   loadOverlayPosition(artwork, compare);
   if (!reference) clearTrace();
   if (reference && els.referenceLayer.complete) renderReferenceTrace();
+  renderAnalysisCompare();
   clampOverlayToStage();
   applyOverlayMode();
   applyOverlayTransform();
@@ -1988,6 +2048,34 @@ function syncDefaultTraceColorControls() {
   });
 }
 
+function normalizeAnalysisMode(value) {
+  return ["trace", "value", "posterize", "value-steps", "blur"].includes(value) ? value : "trace";
+}
+
+function normalizeCompareView(value) {
+  return value === "side-by-side" ? "side-by-side" : "overlay";
+}
+
+function syncAnalysisControls() {
+  state.analysisMode = normalizeAnalysisMode(state.analysisMode);
+  state.compareView = normalizeCompareView(state.compareView);
+  if (els.analysisModeSelect) els.analysisModeSelect.value = state.analysisMode;
+  if (els.compareViewSelect) els.compareViewSelect.value = state.compareView;
+  toArray(document.querySelectorAll("[data-analysis-control]")).forEach((control) => {
+    control.classList.toggle("hidden", control.dataset.analysisControl !== state.analysisMode);
+  });
+  if (els.analysisComparePanel) {
+    els.analysisComparePanel.classList.toggle("hidden", state.compareView !== "side-by-side");
+  }
+  if (els.traceToggle) {
+    const label = els.traceToggle.closest("label");
+    if (label) {
+      const name = state.analysisMode === "trace" ? "trace lines" : "reference analysis";
+      label.lastChild.textContent = ` Show ${name}`;
+    }
+  }
+}
+
 function renderLastExported(value) {
   if (!els.lastExportedInfo) return;
   if (!value) {
@@ -2035,41 +2123,146 @@ function applyOverlayMode() {
 
 function renderReferenceTrace() {
   if (!els.referenceLayer.complete || !els.referenceLayer.naturalWidth) return;
-  const canvas = els.traceCanvas;
-  const width = 420;
-  const height = 525;
-  canvas.width = width;
-  canvas.height = height;
+  renderAnalysisToCanvas(els.referenceLayer, els.traceCanvas, {
+    mode: state.analysisMode,
+    transparentTrace: true,
+    fixedWidth: 420,
+    fixedHeight: 525,
+  });
+}
+
+function renderAnalysisCompare() {
+  if (!els.analysisComparePanel || state.compareView !== "side-by-side") return;
+  if (els.referenceLayer.complete && els.referenceLayer.naturalWidth) {
+    renderAnalysisToCanvas(els.referenceLayer, els.analysisReferenceCanvas, { mode: state.analysisMode });
+  } else {
+    clearCanvas(els.analysisReferenceCanvas);
+  }
+  if (els.artworkBaseLayer.complete && els.artworkBaseLayer.naturalWidth) {
+    renderAnalysisToCanvas(els.artworkBaseLayer, els.analysisArtworkCanvas, { mode: state.analysisMode });
+  } else {
+    clearCanvas(els.analysisArtworkCanvas);
+  }
+}
+
+function renderAnalysisToCanvas(source, canvas, options = {}) {
+  if (!source || !canvas || !source.naturalWidth || !source.naturalHeight) return;
+  const mode = normalizeAnalysisMode(options.mode || state.analysisMode);
+  const size = analysisCanvasSize(source, options.fixedWidth, options.fixedHeight);
+  canvas.width = size.width;
+  canvas.height = size.height;
   const ctx = canvas.getContext("2d");
   const scratch = document.createElement("canvas");
-  scratch.width = width;
-  scratch.height = height;
-  const scratchCtx = scratch.getContext("2d");
+  scratch.width = size.width;
+  scratch.height = size.height;
+  const scratchCtx = scratch.getContext("2d", { willReadFrequently: true });
   scratchCtx.fillStyle = "#fff";
-  scratchCtx.fillRect(0, 0, width, height);
-  const rect = containRect(els.referenceLayer.naturalWidth, els.referenceLayer.naturalHeight, width, height);
-  scratchCtx.drawImage(els.referenceLayer, rect.x, rect.y, rect.width, rect.height);
-  const image = scratchCtx.getImageData(0, 0, width, height);
+  scratchCtx.fillRect(0, 0, size.width, size.height);
+  const rect = containRect(source.naturalWidth, source.naturalHeight, size.width, size.height);
+
+  if (mode === "blur") {
+    const blur = Number(els.blurAmountControl ? els.blurAmountControl.value : 8) || 8;
+    scratchCtx.filter = `blur(${blur}px)`;
+    scratchCtx.drawImage(source, rect.x, rect.y, rect.width, rect.height);
+    scratchCtx.filter = "none";
+    ctx.clearRect(0, 0, size.width, size.height);
+    ctx.drawImage(scratch, 0, 0);
+    return;
+  }
+
+  scratchCtx.drawImage(source, rect.x, rect.y, rect.width, rect.height);
+  if (mode === "trace") {
+    renderTraceAnalysis(scratchCtx, ctx, size, rect, Boolean(options.transparentTrace));
+    return;
+  }
+
+  const image = scratchCtx.getImageData(0, 0, size.width, size.height);
   const data = image.data;
-  const threshold = Number(els.traceThresholdControl.value);
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = hexToRgba(state.traceColor, 0.95);
+  const xStart = Math.max(0, Math.floor(rect.x));
+  const yStart = Math.max(0, Math.floor(rect.y));
+  const xEnd = Math.min(size.width, Math.ceil(rect.x + rect.width));
+  const yEnd = Math.min(size.height, Math.ceil(rect.y + rect.height));
+  const colorLevels = Number(els.posterizeLevelControl ? els.posterizeLevelControl.value : 5) || 5;
+  const valueLevels = Number(els.valueLevelControl ? els.valueLevelControl.value : 5) || 5;
+
+  for (let y = 0; y < size.height; y += 1) {
+    for (let x = 0; x < size.width; x += 1) {
+      const index = (y * size.width + x) * 4;
+      const inImage = x >= xStart && x < xEnd && y >= yStart && y < yEnd;
+      if (!inImage) {
+        data[index] = 255;
+        data[index + 1] = 255;
+        data[index + 2] = 255;
+        data[index + 3] = 255;
+        continue;
+      }
+      if (mode === "value") {
+        const gray = luma(data[index], data[index + 1], data[index + 2]);
+        data[index] = gray;
+        data[index + 1] = gray;
+        data[index + 2] = gray;
+      } else if (mode === "posterize") {
+        data[index] = quantizeChannel(data[index], colorLevels);
+        data[index + 1] = quantizeChannel(data[index + 1], colorLevels);
+        data[index + 2] = quantizeChannel(data[index + 2], colorLevels);
+      } else if (mode === "value-steps") {
+        const gray = quantizeChannel(luma(data[index], data[index + 1], data[index + 2]), valueLevels);
+        data[index] = gray;
+        data[index + 1] = gray;
+        data[index + 2] = gray;
+      }
+    }
+  }
+  ctx.clearRect(0, 0, size.width, size.height);
+  ctx.putImageData(image, 0, 0);
+}
+
+function renderTraceAnalysis(sourceCtx, targetCtx, size, rect, transparentTrace) {
+  const image = sourceCtx.getImageData(0, 0, size.width, size.height);
+  const data = image.data;
+  const threshold = Number(els.traceThresholdControl ? els.traceThresholdControl.value : 38);
+  targetCtx.clearRect(0, 0, size.width, size.height);
+  if (!transparentTrace) {
+    targetCtx.fillStyle = "#fff";
+    targetCtx.fillRect(0, 0, size.width, size.height);
+  }
+  targetCtx.fillStyle = hexToRgba(state.traceColor, 0.95);
 
   const xStart = Math.max(1, Math.floor(rect.x));
   const yStart = Math.max(1, Math.floor(rect.y));
-  const xEnd = Math.min(width - 1, Math.ceil(rect.x + rect.width));
-  const yEnd = Math.min(height - 1, Math.ceil(rect.y + rect.height));
+  const xEnd = Math.min(size.width - 1, Math.ceil(rect.x + rect.width));
+  const yEnd = Math.min(size.height - 1, Math.ceil(rect.y + rect.height));
 
   for (let y = yStart; y < yEnd; y += 1) {
     for (let x = xStart; x < xEnd; x += 1) {
-      const center = grayAt(data, width, x, y);
-      const right = grayAt(data, width, x + 1, y);
-      const down = grayAt(data, width, x, y + 1);
-      const diag = grayAt(data, width, x + 1, y + 1);
+      const center = grayAt(data, size.width, x, y);
+      const right = grayAt(data, size.width, x + 1, y);
+      const down = grayAt(data, size.width, x, y + 1);
+      const diag = grayAt(data, size.width, x + 1, y + 1);
       const edge = Math.abs(center - right) + Math.abs(center - down) + Math.abs(center - diag) * 0.5;
-      if (edge > threshold) ctx.fillRect(x, y, 1.8, 1.8);
+      if (edge > threshold) targetCtx.fillRect(x, y, 1.8, 1.8);
     }
   }
+}
+
+function analysisCanvasSize(source, fixedWidth, fixedHeight) {
+  if (fixedWidth && fixedHeight) return { width: fixedWidth, height: fixedHeight };
+  const maxSide = 720;
+  const scale = Math.min(1, maxSide / Math.max(source.naturalWidth, source.naturalHeight));
+  return {
+    width: Math.max(1, Math.round(source.naturalWidth * scale)),
+    height: Math.max(1, Math.round(source.naturalHeight * scale)),
+  };
+}
+
+function quantizeChannel(value, levels) {
+  const safeLevels = clamp(Number(levels) || 5, 2, 12);
+  const step = 255 / (safeLevels - 1);
+  return Math.round(value / step) * step;
+}
+
+function luma(red, green, blue) {
+  return red * 0.2126 + green * 0.7152 + blue * 0.0722;
 }
 
 function containRect(sourceWidth, sourceHeight, targetWidth, targetHeight) {
@@ -2198,8 +2391,13 @@ function grayAt(data, width, x, y) {
 }
 
 function clearTrace() {
-  const ctx = els.traceCanvas.getContext("2d");
-  ctx.clearRect(0, 0, els.traceCanvas.width, els.traceCanvas.height);
+  clearCanvas(els.traceCanvas);
+}
+
+function clearCanvas(canvas) {
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
 function clamp(value, min, max) {
