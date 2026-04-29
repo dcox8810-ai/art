@@ -91,7 +91,12 @@ html[data-theme="light"] .app-shell {
 
 .app-status {
   display: none;
-  margin: 0 0 10px;
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  left: 50%;
+  z-index: 30;
+  width: min(420px, calc(100vw - 24px));
+  margin: 0;
   border: 1px solid rgba(61, 169, 165, 0.34);
   border-radius: 8px;
   background: rgba(61, 169, 165, 0.13);
@@ -99,6 +104,9 @@ html[data-theme="light"] .app-shell {
   padding: 9px 10px;
   font-size: 0.8rem;
   font-weight: 800;
+  transform: translateX(-50%);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(14px);
 }
 
 .app-status.visible {

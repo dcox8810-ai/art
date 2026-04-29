@@ -212,7 +212,7 @@ function loadUiPrefs() {
   if (els.compareViewSelect) els.compareViewSelect.value = state.compareView;
   if (els.traceThresholdControl) els.traceThresholdControl.value = clamp(Number(prefs.traceDetail) || 38, 15, 90);
   if (els.posterizeLevelControl) els.posterizeLevelControl.value = clamp(Number(prefs.posterizeLevels) || 5, 3, 9);
-  if (els.valueLevelControl) els.valueLevelControl.value = clamp(Number(prefs.valueLevels) || 5, 3, 9);
+  if (els.valueLevelControl) els.valueLevelControl.value = clamp(Number(prefs.valueLevels) || 5, 2, 9);
   if (els.blurAmountControl) els.blurAmountControl.value = clamp(Number(prefs.blurAmount) || 8, 1, 18);
   syncDefaultTraceColorControls();
   syncTraceColorControls();
@@ -309,15 +309,16 @@ async function saveArtworksToIndexedDb(artworks) {
   });
 }
 
-function saveData() {
+function saveData(options = {}) {
+  const { quiet = false } = options;
   state.dataRevision += 1;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state.artworks));
   } catch (error) {
-    setAppStatus("Saved to browser database. Local quick cache is full.");
+    if (!quiet) setAppStatus("Saved to browser database. Local quick cache is full.");
   }
   saveArtworksToIndexedDb(state.artworks).catch(() => {
-    setAppStatus("Could not save to browser database. Please export a backup.");
+    if (!quiet) setAppStatus("Could not save to browser database. Please export a backup.");
   });
 }
 
@@ -801,7 +802,7 @@ function handleOverlayNudge(event) {
   clampOverlayToStage();
   syncOverlayControls();
   applyOverlayTransform();
-  saveCurrentOverlayPosition();
+  saveCurrentOverlayPosition({ quiet: true });
 }
 
 function setupLockedOverlayZoom() {
@@ -1949,7 +1950,7 @@ function overlaySnapshotsMatch(a, b) {
   return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height && a.rotate === b.rotate && a.opacity === b.opacity;
 }
 
-function saveCurrentOverlayPosition() {
+function saveCurrentOverlayPosition(options = {}) {
   const artwork = currentOverlayArtwork();
   const compareImage = currentOverlayCompareImage();
   const key = overlayPositionKey(compareImage);
@@ -1960,7 +1961,7 @@ function saveCurrentOverlayPosition() {
     baseSpace: overlayToBaseSpace(),
   };
   artwork.updatedAt = new Date().toISOString();
-  saveData();
+  saveData(options);
 }
 
 function currentOverlayCompareImage() {

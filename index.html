@@ -10,7 +10,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=21" />
+    <link rel="stylesheet" href="styles.css?v=22" />
   </head>
   <body>
     <main class="app-shell">
@@ -472,7 +472,7 @@
           </div>
           <label class="analysis-control" data-analysis-control="trace">Trace detail <input id="traceThresholdControl" type="range" min="15" max="90" value="38" /></label>
           <label class="analysis-control" data-analysis-control="posterize">Color steps <input id="posterizeLevelControl" type="range" min="3" max="9" value="5" /></label>
-          <label class="analysis-control" data-analysis-control="value-steps">Value steps <input id="valueLevelControl" type="range" min="3" max="9" value="5" /></label>
+          <label class="analysis-control" data-analysis-control="value-steps">Value steps <input id="valueLevelControl" type="range" min="2" max="9" value="5" /></label>
           <label class="analysis-control" data-analysis-control="blur">Blur amount <input id="blurAmountControl" type="range" min="1" max="18" value="8" /></label>
           <fieldset class="color-field">
             <legend>Trace color</legend>
@@ -544,7 +544,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=21"></script>
+    <script src="app.js?v=22"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");
