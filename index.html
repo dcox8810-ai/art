@@ -10,7 +10,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=23" />
+    <link rel="stylesheet" href="styles.css?v=24" />
   </head>
   <body>
     <main class="app-shell">
@@ -397,7 +397,7 @@
         </section>
       </section>
 
-      <section class="view" id="view-overlay" aria-labelledby="tab-overlay">
+      <section class="view" id="view-overlay" aria-labelledby="tab-study">
         <div class="study-switch panel" role="tablist" aria-label="Study mode">
           <button class="active" type="button" data-study-mode="reference">Reference</button>
           <button type="button" data-study-mode="overlay">Overlay</button>
@@ -417,13 +417,10 @@
             <input id="studyProjectTitleInput" placeholder="Sunday portrait study" />
           </label>
           <p class="upload-status" id="studyReferenceStatus"></p>
-          <div class="analysis-compare reference-analysis-grid" aria-label="Reference analysis">
+          <img class="hidden" id="referenceOriginalPreview" alt="Original reference" />
+          <div class="analysis-compare reference-analysis-grid single" aria-label="Reference analysis">
             <div class="analysis-pane">
-              <span>Original</span>
-              <img id="referenceOriginalPreview" alt="Original reference" />
-            </div>
-            <div class="analysis-pane">
-              <span>Analysis</span>
+              <span id="referencePreviewLabel">Analysis</span>
               <canvas id="referenceStudyCanvas"></canvas>
             </div>
           </div>
@@ -481,11 +478,12 @@
         </div>
 
         <div class="panel controls">
-          <label class="toggle-row"><input id="traceToggle" type="checkbox" checked /> Show reference analysis</label>
+          <label class="toggle-row overlay-trace-toggle"><input id="traceToggle" type="checkbox" checked /> Show trace lines</label>
           <div class="analysis-grid">
-            <label>
+            <label id="analysisModeWrap">
               Analysis mode
               <select id="analysisModeSelect">
+                <option value="original">Original</option>
                 <option value="trace">Trace lines</option>
                 <option value="value">Value study</option>
                 <option value="posterize">Simple color</option>
@@ -509,13 +507,13 @@
           <label class="analysis-control" data-analysis-control="notan">Notan threshold <input id="notanThresholdControl" type="range" min="5" max="95" value="50" /></label>
           <label class="analysis-control" data-analysis-control="palette">Palette count <input id="paletteCountControl" type="range" min="2" max="10" value="5" /></label>
           <label class="analysis-control" data-analysis-control="blur">Blur amount <input id="blurAmountControl" type="range" min="1" max="18" value="8" /></label>
-          <label class="analysis-control analysis-cleanup" data-analysis-cleanup>Cleanup <input id="cleanupControl" type="range" min="0" max="4" value="1" /></label>
+          <label class="analysis-control analysis-cleanup" data-analysis-cleanup>Cleanup <input id="cleanupControl" type="range" min="0" max="2" value="1" /></label>
           <label class="analysis-control analysis-cleanup" data-analysis-cleanup>Merge similar colors <input id="mergeThresholdControl" type="range" min="0" max="80" value="18" /></label>
           <div class="analysis-grid analysis-cleanup" data-analysis-adjust>
             <label>Saturation <input id="saturationControl" type="range" min="0" max="200" value="110" /></label>
             <label>Contrast <input id="contrastControl" type="range" min="50" max="180" value="110" /></label>
           </div>
-          <fieldset class="color-field">
+          <fieldset class="color-field trace-color-field">
             <legend>Trace color</legend>
             <label style="--swatch:#ff3b30"><input type="radio" name="traceColor" value="#ff3b30" /><span>Red</span></label>
             <label style="--swatch:#020617"><input type="radio" name="traceColor" value="#020617" /><span>Black</span></label>
@@ -552,10 +550,10 @@
       <nav class="tabbar" aria-label="Primary">
         <button class="tab active" id="tab-projects" data-view="projects">Projects</button>
         <button class="tab hidden" id="tab-log" data-view="log">Log</button>
+        <button class="tab" id="tab-study" data-view="overlay">Study</button>
         <button class="tab" id="tab-review" data-view="review">Review</button>
         <button class="tab" id="tab-stats" data-view="stats">Stats</button>
         <button class="tab" id="tab-settings" data-view="settings">Settings</button>
-        <button class="tab hidden" id="tab-overlay" data-view="overlay">Overlay</button>
       </nav>
     </main>
 
@@ -585,7 +583,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=23"></script>
+    <script src="app.js?v=24"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");

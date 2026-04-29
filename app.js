@@ -32,6 +32,7 @@ const state = {
   analysisMode: "trace",
   compareView: "overlay",
   studyMode: "reference",
+  analysisRenderTimer: 0,
   studyReferenceDataUrl: "",
   overlay: { ...DEFAULT_OVERLAY },
 };
@@ -144,6 +145,9 @@ function bindElements() {
     saveReferenceProjectButton: document.querySelector("#saveReferenceProjectButton"),
     referenceOriginalPreview: document.querySelector("#referenceOriginalPreview"),
     referenceStudyCanvas: document.querySelector("#referenceStudyCanvas"),
+    referencePreviewLabel: document.querySelector("#referencePreviewLabel"),
+    analysisToggleLabel: document.querySelector(".overlay-trace-toggle"),
+    analysisModeWrap: document.querySelector("#analysisModeWrap"),
     compareViewWrap: document.querySelector("#compareViewWrap"),
     referenceLayer: document.querySelector("#referenceLayer"),
     artworkBaseLayer: document.querySelector("#artworkBaseLayer"),
@@ -181,6 +185,9 @@ function bindElements() {
     traceColorInputs: document.querySelectorAll("input[name='traceColor']"),
     overlayOpacityInputs: document.querySelectorAll("input[name='overlayOpacity']"),
     overlayOpacityField: document.querySelector(".opacity-field"),
+    traceColorField: document.querySelector(".trace-color-field"),
+    overlayActionsRow: document.querySelector(".overlay-actions-row"),
+    overlayPicker: document.querySelector(".overlay-picker"),
     textSizeSelect: document.querySelector("#textSizeSelect"),
     themeSelect: document.querySelector("#themeSelect"),
     opacityPlaybackIntervalSelect: document.querySelector("#opacityPlaybackIntervalSelect"),
@@ -234,7 +241,7 @@ function loadUiPrefs() {
   if (els.notanThresholdControl) els.notanThresholdControl.value = clamp(Number(prefs.notanThreshold) || 50, 5, 95);
   if (els.paletteCountControl) els.paletteCountControl.value = clamp(Number(prefs.paletteCount) || 5, 2, 10);
   if (els.blurAmountControl) els.blurAmountControl.value = clamp(Number(prefs.blurAmount) || 8, 1, 18);
-  if (els.cleanupControl) els.cleanupControl.value = clamp(Number(prefs.cleanup) || 1, 0, 4);
+  if (els.cleanupControl) els.cleanupControl.value = clamp(Number(prefs.cleanup) || 1, 0, 2);
   if (els.mergeThresholdControl) els.mergeThresholdControl.value = clamp(Number(prefs.mergeThreshold) || 18, 0, 80);
   if (els.saturationControl) els.saturationControl.value = clamp(Number(prefs.saturation) || 110, 0, 200);
   if (els.contrastControl) els.contrastControl.value = clamp(Number(prefs.contrast) || 110, 50, 180);
@@ -366,7 +373,10 @@ function setupTabs() {
       if (!view) return;
       view.classList.add("active");
       if (els.topActions) els.topActions.classList.toggle("hidden", tab.dataset.view !== "projects");
-      if (tab.dataset.view === "overlay") renderOverlaySelectors();
+      if (tab.dataset.view === "overlay") {
+        syncStudyMode();
+        renderOverlaySelectors();
+      }
       if (tab.dataset.view === "projects") renderProjects();
       if (tab.dataset.view === "review") renderReview();
     });
@@ -565,6 +575,8 @@ function setupFilters() {
     const overlayButton = event.target.closest("[data-overlay-artwork-id]");
     if (overlayButton) {
       selectOverlayArtworkById(overlayButton.dataset.overlayArtworkId);
+      state.studyMode = "overlay";
+      syncStudyMode();
       activateTab("overlay");
       return;
     }
@@ -611,6 +623,8 @@ function setupFilters() {
     const artwork = currentSelectedProject();
     if (!artwork) return;
     selectOverlayArtworkById(artwork.id);
+    state.studyMode = "overlay";
+    syncStudyMode();
     activateTab("overlay");
   });
   els.projectDetailDuplicateButton.addEventListener("click", () => {
@@ -631,6 +645,8 @@ function setupFilters() {
     const index = artwork.images.filter((image) => image.name !== "Reference" && image.dataUrl).findIndex((image) => image.name === imageName);
     if (index >= 0) els.overlayImage.value = String(index);
     renderOverlayImages();
+    state.studyMode = "overlay";
+    syncStudyMode();
     activateTab("overlay");
   });
 
@@ -659,6 +675,8 @@ function setupFilters() {
       const imageIndex = candidates.findIndex((image) => image.name === item.image.name);
       if (imageIndex >= 0) els.overlayImage.value = String(imageIndex);
       renderOverlayImages();
+      state.studyMode = "overlay";
+      syncStudyMode();
       activateTab("overlay");
     });
   }
@@ -692,10 +710,12 @@ function setupOverlay() {
   toArray(els.studyModeButtons || []).forEach((button) => {
     button.addEventListener("click", () => {
       state.studyMode = normalizeStudyMode(button.dataset.studyMode);
+      if (state.studyMode === "overlay" && els.traceToggle) els.traceToggle.checked = true;
       if (state.studyMode === "compare") state.compareView = "side-by-side";
       syncStudyMode();
       saveUiPrefs();
       renderReferenceStudy();
+      renderReferenceTrace();
       renderAnalysisCompare();
     });
   });
@@ -733,16 +753,13 @@ function setupOverlay() {
   });
   els.traceToggle.addEventListener("change", () => {
     applyOverlayMode();
-    renderAnalysisCompare();
   });
   if (els.analysisModeSelect) {
     els.analysisModeSelect.addEventListener("change", () => {
       state.analysisMode = normalizeAnalysisMode(els.analysisModeSelect.value);
       syncAnalysisControls();
       saveUiPrefs();
-      renderReferenceTrace();
-      renderAnalysisCompare();
-      renderReferenceStudy();
+      scheduleStudyRender();
     });
   }
   if (els.compareViewSelect) {
@@ -750,8 +767,7 @@ function setupOverlay() {
       state.compareView = normalizeCompareView(els.compareViewSelect.value);
       syncAnalysisControls();
       saveUiPrefs();
-      renderAnalysisCompare();
-      renderReferenceStudy();
+      scheduleStudyRender();
     });
   }
   [
@@ -769,9 +785,12 @@ function setupOverlay() {
     if (!control) return;
     control.addEventListener("input", () => {
       saveUiPrefs();
-      renderReferenceTrace();
-      renderAnalysisCompare();
-      renderReferenceStudy();
+      if ([els.paletteCountControl, els.cleanupControl, els.mergeThresholdControl].includes(control)) return;
+      scheduleStudyRender();
+    });
+    control.addEventListener("change", () => {
+      saveUiPrefs();
+      renderStudyViews();
     });
   });
   if (els.overlayLockToggle) {
@@ -788,8 +807,7 @@ function setupOverlay() {
       syncDefaultTraceColorControls();
       saveUiPrefs();
       renderReferenceTrace();
-      renderAnalysisCompare();
-      renderReferenceStudy();
+      scheduleStudyRender();
     });
   });
   toArray(els.overlayOpacityInputs).forEach((input) => {
@@ -932,6 +950,22 @@ function currentStudyReferenceDataUrl() {
   return reference ? reference.dataUrl : "";
 }
 
+function scheduleStudyRender() {
+  window.clearTimeout(state.analysisRenderTimer);
+  state.analysisRenderTimer = window.setTimeout(renderStudyViews, 90);
+}
+
+function renderStudyViews() {
+  window.clearTimeout(state.analysisRenderTimer);
+  state.analysisRenderTimer = 0;
+  if (state.studyMode === "overlay") {
+    renderReferenceTrace();
+    return;
+  }
+  renderReferenceStudy();
+  renderAnalysisCompare();
+}
+
 function renderReferenceStudy() {
   if (!els.referenceOriginalPreview || !els.referenceStudyCanvas) return;
   const dataUrl = currentStudyReferenceDataUrl();
@@ -945,6 +979,9 @@ function renderReferenceStudy() {
     renderAnalysisToCanvas(els.referenceOriginalPreview, els.referenceStudyCanvas, { mode: state.analysisMode });
   } else {
     els.referenceOriginalPreview.onload = () => renderAnalysisToCanvas(els.referenceOriginalPreview, els.referenceStudyCanvas, { mode: state.analysisMode });
+  }
+  if (els.referencePreviewLabel) {
+    els.referencePreviewLabel.textContent = analysisModeLabel(state.analysisMode);
   }
 }
 
@@ -2194,7 +2231,20 @@ function syncDefaultTraceColorControls() {
 }
 
 function normalizeAnalysisMode(value) {
-  return ["trace", "value", "posterize", "value-steps", "notan", "palette", "blur"].includes(value) ? value : "trace";
+  return ["original", "trace", "value", "posterize", "value-steps", "notan", "palette", "blur"].includes(value) ? value : "trace";
+}
+
+function analysisModeLabel(value) {
+  return {
+    original: "Original",
+    trace: "Trace lines",
+    value: "Value study",
+    posterize: "Simple color",
+    "value-steps": "Value steps",
+    notan: "Notan",
+    palette: "Palette",
+    blur: "Squint blur",
+  }[normalizeAnalysisMode(value)] || "Analysis";
 }
 
 function normalizeCompareView(value) {
@@ -2210,25 +2260,33 @@ function syncAnalysisControls() {
   state.compareView = normalizeCompareView(state.compareView);
   if (els.analysisModeSelect) els.analysisModeSelect.value = state.analysisMode;
   if (els.compareViewSelect) els.compareViewSelect.value = state.compareView;
+  const overlayMode = state.studyMode === "overlay";
+  const compareMode = state.studyMode === "compare";
+  const activeMode = overlayMode ? "trace" : state.analysisMode;
+  if (els.analysisToggleLabel) els.analysisToggleLabel.classList.toggle("hidden", !overlayMode);
+  if (els.analysisModeWrap) els.analysisModeWrap.classList.toggle("hidden", overlayMode);
+  if (els.compareViewWrap) els.compareViewWrap.classList.add("hidden");
+  if (els.overlayOpacityField) els.overlayOpacityField.classList.toggle("hidden", !overlayMode);
+  if (els.overlayActionsRow) els.overlayActionsRow.classList.toggle("hidden", !overlayMode);
+  if (els.overlayPicker) els.overlayPicker.classList.toggle("hidden", state.studyMode === "reference");
   toArray(document.querySelectorAll("[data-analysis-control]")).forEach((control) => {
-    control.classList.toggle("hidden", control.dataset.analysisControl !== state.analysisMode);
+    control.classList.toggle("hidden", control.dataset.analysisControl !== activeMode);
   });
   if (els.analysisComparePanel) {
-    els.analysisComparePanel.classList.toggle("hidden", state.studyMode !== "compare");
+    els.analysisComparePanel.classList.toggle("hidden", !compareMode);
   }
-  if (els.compareViewWrap) els.compareViewWrap.classList.toggle("hidden", state.studyMode !== "overlay");
   const cleanupModes = ["posterize", "value-steps", "notan", "palette"];
   toArray(document.querySelectorAll("[data-analysis-cleanup]")).forEach((control) => {
-    control.classList.toggle("hidden", !cleanupModes.includes(state.analysisMode));
+    control.classList.toggle("hidden", overlayMode || !cleanupModes.includes(activeMode));
   });
   toArray(document.querySelectorAll("[data-analysis-adjust]")).forEach((control) => {
-    control.classList.toggle("hidden", state.analysisMode === "trace");
+    control.classList.toggle("hidden", overlayMode || activeMode === "trace" || activeMode === "original");
   });
+  if (els.traceColorField) els.traceColorField.classList.toggle("hidden", activeMode !== "trace");
   if (els.traceToggle) {
     const label = els.traceToggle.closest("label");
     if (label) {
-      const name = state.analysisMode === "trace" ? "trace lines" : "reference analysis";
-      label.lastChild.textContent = ` Show ${name}`;
+      label.lastChild.textContent = " Show trace lines";
     }
   }
 }
@@ -2242,7 +2300,9 @@ function syncStudyMode() {
   if (els.overlayStage) els.overlayStage.classList.toggle("hidden", state.studyMode !== "overlay");
   if (els.overlayNudge) els.overlayNudge.classList.toggle("hidden", state.studyMode !== "overlay");
   if (els.analysisComparePanel) els.analysisComparePanel.classList.toggle("hidden", state.studyMode !== "compare");
+  if (state.studyMode === "overlay" && els.traceToggle) els.traceToggle.checked = true;
   syncAnalysisControls();
+  applyOverlayMode();
 }
 
 function renderLastExported(value) {
@@ -2284,8 +2344,9 @@ function applyBaseSpace(baseSpace) {
 }
 
 function applyOverlayMode() {
-  els.overlayStage.classList.toggle("trace-mode", els.traceToggle.checked);
-  els.overlayStage.classList.toggle("photo-mode", !els.traceToggle.checked);
+  const showTrace = state.studyMode === "overlay" ? true : Boolean(els.traceToggle && els.traceToggle.checked);
+  els.overlayStage.classList.toggle("trace-mode", showTrace);
+  els.overlayStage.classList.toggle("photo-mode", !showTrace);
   els.compareFrame.style.opacity = state.overlay.opacity / 100;
   els.referenceLayer.style.opacity = "0";
 }
@@ -2293,7 +2354,7 @@ function applyOverlayMode() {
 function renderReferenceTrace() {
   if (!els.referenceLayer.complete || !els.referenceLayer.naturalWidth) return;
   renderAnalysisToCanvas(els.referenceLayer, els.traceCanvas, {
-    mode: state.analysisMode,
+    mode: "trace",
     transparentTrace: true,
     fixedWidth: 420,
     fixedHeight: 525,
@@ -2301,7 +2362,7 @@ function renderReferenceTrace() {
 }
 
 function renderAnalysisCompare() {
-  if (!els.analysisComparePanel || state.compareView !== "side-by-side") return;
+  if (!els.analysisComparePanel || state.studyMode !== "compare") return;
   if (els.referenceLayer.complete && els.referenceLayer.naturalWidth) {
     renderAnalysisToCanvas(els.referenceLayer, els.analysisReferenceCanvas, { mode: state.analysisMode });
   } else {
@@ -2328,6 +2389,14 @@ function renderAnalysisToCanvas(source, canvas, options = {}) {
   scratchCtx.fillStyle = "#fff";
   scratchCtx.fillRect(0, 0, size.width, size.height);
   const rect = containRect(source.naturalWidth, source.naturalHeight, size.width, size.height);
+
+  if (mode === "original") {
+    ctx.clearRect(0, 0, size.width, size.height);
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, size.width, size.height);
+    ctx.drawImage(source, rect.x, rect.y, rect.width, rect.height);
+    return;
+  }
 
   if (mode === "blur") {
     const blur = Number(els.blurAmountControl ? els.blurAmountControl.value : 8) || 8;
@@ -2436,7 +2505,7 @@ function applyPaletteQuantization(data, width, height, rect, count) {
 
 function samplePaletteColors(data, width, height, rect, count) {
   const samples = [];
-  const step = Math.max(1, Math.floor(Math.sqrt(((rect.xEnd - rect.xStart) * (rect.yEnd - rect.yStart)) / 900)));
+  const step = Math.max(1, Math.floor(Math.sqrt(((rect.xEnd - rect.xStart) * (rect.yEnd - rect.yStart)) / 500)));
   for (let y = rect.yStart; y < rect.yEnd; y += step) {
     for (let x = rect.xStart; x < rect.xEnd; x += step) {
       const index = (y * width + x) * 4;
@@ -2448,7 +2517,7 @@ function samplePaletteColors(data, width, height, rect, count) {
   for (let i = 0; i < count; i += 1) {
     colors.push(samples[Math.floor((i / Math.max(1, count - 1)) * (samples.length - 1))].slice());
   }
-  for (let iteration = 0; iteration < 6; iteration += 1) {
+  for (let iteration = 0; iteration < 3; iteration += 1) {
     const buckets = colors.map(() => ({ sum: [0, 0, 0], count: 0 }));
     samples.forEach((sample) => {
       const nearestIndex = nearestColorIndex(sample[0], sample[1], sample[2], colors);
@@ -2484,24 +2553,30 @@ function mergeSimilarColors(data, width, height, rect, threshold) {
 }
 
 function cleanupColorSpeckles(data, width, height, rect, passes) {
-  for (let pass = 0; pass < passes; pass += 1) {
+  for (let pass = 0; pass < Math.min(2, passes); pass += 1) {
     const copy = new Uint8ClampedArray(data);
     for (let y = rect.yStart + 1; y < rect.yEnd - 1; y += 1) {
       for (let x = rect.xStart + 1; x < rect.xEnd - 1; x += 1) {
         const index = (y * width + x) * 4;
         const current = colorKey(copy[index], copy[index + 1], copy[index + 2]);
-        const counts = {};
+        const counts = new Map();
+        let bestKey = current;
+        let bestCount = 0;
         for (let yy = -1; yy <= 1; yy += 1) {
           for (let xx = -1; xx <= 1; xx += 1) {
             if (xx === 0 && yy === 0) continue;
             const neighborIndex = ((y + yy) * width + (x + xx)) * 4;
             const key = colorKey(copy[neighborIndex], copy[neighborIndex + 1], copy[neighborIndex + 2]);
-            counts[key] = (counts[key] || 0) + 1;
+            const nextCount = (counts.get(key) || 0) + 1;
+            counts.set(key, nextCount);
+            if (nextCount > bestCount) {
+              bestCount = nextCount;
+              bestKey = key;
+            }
           }
         }
-        const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
-        if (best && best[0] !== current && best[1] >= 4) {
-          const [red, green, blue] = best[0].split(",").map(Number);
+        if (bestKey !== current && bestCount >= 4) {
+          const [red, green, blue] = bestKey.split(",").map(Number);
           data[index] = red;
           data[index + 1] = green;
           data[index + 2] = blue;
@@ -2541,7 +2616,7 @@ function renderTraceAnalysis(sourceCtx, targetCtx, size, rect, transparentTrace)
 
 function analysisCanvasSize(source, fixedWidth, fixedHeight) {
   if (fixedWidth && fixedHeight) return { width: fixedWidth, height: fixedHeight };
-  const maxSide = 720;
+  const maxSide = 420;
   const scale = Math.min(1, maxSide / Math.max(source.naturalWidth, source.naturalHeight));
   return {
     width: Math.max(1, Math.round(source.naturalWidth * scale)),
