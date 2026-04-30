@@ -27,6 +27,7 @@ const state = {
   opacityPlaybackIndex: 0,
   dataRevision: 0,
   overlayStageZoom: { scale: 1, x: 0, y: 0 },
+  overlayUsingDefaultPosition: false,
   defaultTraceColor: DEFAULT_TRACE_COLOR,
   traceColor: DEFAULT_TRACE_COLOR,
   analysisMode: "trace",
@@ -169,11 +170,16 @@ function bindElements() {
     analysisModeSelect: document.querySelector("#analysisModeSelect"),
     compareViewSelect: document.querySelector("#compareViewSelect"),
     traceThresholdControl: document.querySelector("#traceThresholdControl"),
+    traceThresholdValue: document.querySelector("#traceThresholdValue"),
     posterizeLevelControl: document.querySelector("#posterizeLevelControl"),
+    posterizeLevelValue: document.querySelector("#posterizeLevelValue"),
     valueLevelControl: document.querySelector("#valueLevelControl"),
+    valueLevelValue: document.querySelector("#valueLevelValue"),
     notanThresholdControl: document.querySelector("#notanThresholdControl"),
+    notanThresholdValue: document.querySelector("#notanThresholdValue"),
     paletteCountControl: document.querySelector("#paletteCountControl"),
     blurAmountControl: document.querySelector("#blurAmountControl"),
+    blurAmountValue: document.querySelector("#blurAmountValue"),
     cleanupControl: document.querySelector("#cleanupControl"),
     mergeThresholdControl: document.querySelector("#mergeThresholdControl"),
     saturationControl: document.querySelector("#saturationControl"),
@@ -245,6 +251,7 @@ function loadUiPrefs() {
   if (els.mergeThresholdControl) els.mergeThresholdControl.value = clamp(Number(prefs.mergeThreshold) || 18, 0, 80);
   if (els.saturationControl) els.saturationControl.value = clamp(Number(prefs.saturation) || 110, 0, 200);
   if (els.contrastControl) els.contrastControl.value = clamp(Number(prefs.contrast) || 110, 50, 180);
+  updateAnalysisReadouts();
   syncDefaultTraceColorControls();
   syncTraceColorControls();
   syncAnalysisControls();
@@ -746,7 +753,12 @@ function setupOverlay() {
     renderAnalysisCompare();
   });
   els.artworkBaseLayer.addEventListener("load", () => {
-    if (state.overlay.baseSpace) applyBaseSpace(state.overlay.baseSpace);
+    if (state.overlayUsingDefaultPosition) {
+      fitDefaultOverlayToArtwork();
+      state.overlayUsingDefaultPosition = false;
+    } else if (state.overlay.baseSpace) {
+      applyBaseSpace(state.overlay.baseSpace);
+    }
     clampOverlayToStage();
     applyOverlayTransform();
     renderAnalysisCompare();
@@ -784,11 +796,13 @@ function setupOverlay() {
   ].forEach((control) => {
     if (!control) return;
     control.addEventListener("input", () => {
+      updateAnalysisReadouts();
       saveUiPrefs();
       if ([els.paletteCountControl, els.cleanupControl, els.mergeThresholdControl].includes(control)) return;
       scheduleStudyRender();
     });
     control.addEventListener("change", () => {
+      updateAnalysisReadouts();
       saveUiPrefs();
       renderStudyViews();
     });
@@ -824,7 +838,8 @@ function setupOverlay() {
   els.resetOverlayButton.addEventListener("click", () => {
     pushOverlayHistory();
     clearOverlayRedoHistory();
-    state.overlay = { ...DEFAULT_OVERLAY };
+    state.overlay = defaultOverlayForArtwork();
+    state.overlayUsingDefaultPosition = false;
     syncOverlayControls();
     clampOverlayToStage();
     applyOverlayTransform();
@@ -2081,11 +2096,31 @@ function applyOverlayTransform() {
 function loadOverlayPosition(artwork, compareImage) {
   const key = overlayPositionKey(compareImage);
   const saved = key && artwork.overlayPositions ? artwork.overlayPositions[key] : null;
-  state.overlay = sanitizeOverlay(saved || DEFAULT_OVERLAY);
+  state.overlayUsingDefaultPosition = !saved;
+  state.overlay = sanitizeOverlay(saved || defaultOverlayForArtwork());
   state.overlayHistory = [];
   state.overlayRedoHistory = [];
   if (state.overlay.baseSpace) applyBaseSpace(state.overlay.baseSpace);
   syncOverlayControls();
+}
+
+function defaultOverlayForArtwork() {
+  const stageSize = overlayStageSize();
+  const baseRect = artworkDisplayRect(stageSize.width, stageSize.height);
+  if (!baseRect) return { ...DEFAULT_OVERLAY };
+  const width = Math.max(220, baseRect.width * 0.94);
+  const height = Math.max(275, baseRect.height * 0.94);
+  return {
+    ...DEFAULT_OVERLAY,
+    x: baseRect.x + (baseRect.width - width) / 2,
+    y: baseRect.y + (baseRect.height - height) / 2,
+    width,
+    height,
+  };
+}
+
+function fitDefaultOverlayToArtwork() {
+  state.overlay = sanitizeOverlay(defaultOverlayForArtwork());
 }
 
 function pushOverlayHistory() {
@@ -2230,8 +2265,16 @@ function syncDefaultTraceColorControls() {
   });
 }
 
+function updateAnalysisReadouts() {
+  if (els.traceThresholdValue && els.traceThresholdControl) els.traceThresholdValue.value = els.traceThresholdControl.value;
+  if (els.posterizeLevelValue && els.posterizeLevelControl) els.posterizeLevelValue.value = els.posterizeLevelControl.value;
+  if (els.valueLevelValue && els.valueLevelControl) els.valueLevelValue.value = els.valueLevelControl.value;
+  if (els.notanThresholdValue && els.notanThresholdControl) els.notanThresholdValue.value = `${els.notanThresholdControl.value}%`;
+  if (els.blurAmountValue && els.blurAmountControl) els.blurAmountValue.value = els.blurAmountControl.value;
+}
+
 function normalizeAnalysisMode(value) {
-  return ["original", "trace", "value", "posterize", "value-steps", "notan", "palette", "blur"].includes(value) ? value : "trace";
+  return ["original", "trace", "value", "posterize", "value-steps", "notan", "blur"].includes(value) ? value : "posterize";
 }
 
 function analysisModeLabel(value) {
@@ -2242,7 +2285,6 @@ function analysisModeLabel(value) {
     posterize: "Simple color",
     "value-steps": "Value steps",
     notan: "Notan",
-    palette: "Palette",
     blur: "Squint blur",
   }[normalizeAnalysisMode(value)] || "Analysis";
 }
@@ -2275,12 +2317,11 @@ function syncAnalysisControls() {
   if (els.analysisComparePanel) {
     els.analysisComparePanel.classList.toggle("hidden", !compareMode);
   }
-  const cleanupModes = ["posterize", "value-steps", "notan", "palette"];
   toArray(document.querySelectorAll("[data-analysis-cleanup]")).forEach((control) => {
-    control.classList.toggle("hidden", overlayMode || !cleanupModes.includes(activeMode));
+    control.classList.add("hidden");
   });
   toArray(document.querySelectorAll("[data-analysis-adjust]")).forEach((control) => {
-    control.classList.toggle("hidden", overlayMode || activeMode === "trace" || activeMode === "original");
+    control.classList.add("hidden");
   });
   if (els.traceColorField) els.traceColorField.classList.toggle("hidden", activeMode !== "trace");
   if (els.traceToggle) {
@@ -2423,10 +2464,6 @@ function renderAnalysisToCanvas(source, canvas, options = {}) {
   const colorLevels = Number(els.posterizeLevelControl ? els.posterizeLevelControl.value : 5) || 5;
   const valueLevels = Number(els.valueLevelControl ? els.valueLevelControl.value : 5) || 5;
   const notanThreshold = (Number(els.notanThresholdControl ? els.notanThresholdControl.value : 50) || 50) * 2.55;
-  const paletteCount = Number(els.paletteCountControl ? els.paletteCountControl.value : 5) || 5;
-  const saturation = (Number(els.saturationControl ? els.saturationControl.value : 100) || 100) / 100;
-  const contrast = (Number(els.contrastControl ? els.contrastControl.value : 100) || 100) / 100;
-  const mergeThreshold = Number(els.mergeThresholdControl ? els.mergeThresholdControl.value : 0) || 0;
 
   for (let y = 0; y < size.height; y += 1) {
     for (let x = 0; x < size.width; x += 1) {
@@ -2439,16 +2476,11 @@ function renderAnalysisToCanvas(source, canvas, options = {}) {
         data[index + 3] = 255;
         continue;
       }
-      adjustPixel(data, index, saturation, contrast);
       if (mode === "value") {
         const gray = luma(data[index], data[index + 1], data[index + 2]);
         data[index] = gray;
         data[index + 1] = gray;
         data[index + 2] = gray;
-      } else if (mode === "posterize") {
-        data[index] = quantizeChannel(data[index], colorLevels);
-        data[index + 1] = quantizeChannel(data[index + 1], colorLevels);
-        data[index + 2] = quantizeChannel(data[index + 2], colorLevels);
       } else if (mode === "value-steps") {
         const gray = quantizeChannel(luma(data[index], data[index + 1], data[index + 2]), valueLevels);
         data[index] = gray;
@@ -2462,15 +2494,11 @@ function renderAnalysisToCanvas(source, canvas, options = {}) {
       }
     }
   }
-  if (mode === "palette") {
-    applyPaletteQuantization(data, size.width, size.height, { xStart, yStart, xEnd, yEnd }, paletteCount);
+  if (mode === "posterize") {
+    applyPaletteQuantization(data, size.width, size.height, { xStart, yStart, xEnd, yEnd }, clamp(colorLevels + 2, 3, 10));
   }
-  if (mergeThreshold > 0 && ["posterize", "value-steps", "notan", "palette"].includes(mode)) {
-    mergeSimilarColors(data, size.width, size.height, { xStart, yStart, xEnd, yEnd }, mergeThreshold);
-  }
-  const cleanup = Number(els.cleanupControl ? els.cleanupControl.value : 0) || 0;
-  if (cleanup > 0 && ["posterize", "value-steps", "notan", "palette"].includes(mode)) {
-    cleanupColorSpeckles(data, size.width, size.height, { xStart, yStart, xEnd, yEnd }, cleanup);
+  if (["posterize", "value-steps", "notan"].includes(mode)) {
+    cleanupColorSpeckles(data, size.width, size.height, { xStart, yStart, xEnd, yEnd }, mode === "posterize" ? 2 : 1);
   }
   ctx.clearRect(0, 0, size.width, size.height);
   ctx.putImageData(image, 0, 0);
@@ -2513,6 +2541,7 @@ function samplePaletteColors(data, width, height, rect, count) {
     }
   }
   if (!samples.length) return [];
+  samples.sort((a, b) => luma(a[0], a[1], a[2]) - luma(b[0], b[1], b[2]));
   const colors = [];
   for (let i = 0; i < count; i += 1) {
     colors.push(samples[Math.floor((i / Math.max(1, count - 1)) * (samples.length - 1))].slice());

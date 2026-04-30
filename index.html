@@ -10,7 +10,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=24" />
+    <link rel="stylesheet" href="styles.css?v=25" />
   </head>
   <body>
     <main class="app-shell">
@@ -489,7 +489,6 @@
                 <option value="posterize">Simple color</option>
                 <option value="value-steps">Value steps</option>
                 <option value="notan">Notan</option>
-                <option value="palette">Palette</option>
                 <option value="blur">Squint blur</option>
               </select>
             </label>
@@ -501,18 +500,11 @@
               </select>
             </label>
           </div>
-          <label class="analysis-control" data-analysis-control="trace">Trace detail <input id="traceThresholdControl" type="range" min="15" max="90" value="38" /></label>
-          <label class="analysis-control" data-analysis-control="posterize">Color steps <input id="posterizeLevelControl" type="range" min="2" max="9" value="4" /></label>
-          <label class="analysis-control" data-analysis-control="value-steps">Value steps <input id="valueLevelControl" type="range" min="2" max="9" value="5" /></label>
-          <label class="analysis-control" data-analysis-control="notan">Notan threshold <input id="notanThresholdControl" type="range" min="5" max="95" value="50" /></label>
-          <label class="analysis-control" data-analysis-control="palette">Palette count <input id="paletteCountControl" type="range" min="2" max="10" value="5" /></label>
-          <label class="analysis-control" data-analysis-control="blur">Blur amount <input id="blurAmountControl" type="range" min="1" max="18" value="8" /></label>
-          <label class="analysis-control analysis-cleanup" data-analysis-cleanup>Cleanup <input id="cleanupControl" type="range" min="0" max="2" value="1" /></label>
-          <label class="analysis-control analysis-cleanup" data-analysis-cleanup>Merge similar colors <input id="mergeThresholdControl" type="range" min="0" max="80" value="18" /></label>
-          <div class="analysis-grid analysis-cleanup" data-analysis-adjust>
-            <label>Saturation <input id="saturationControl" type="range" min="0" max="200" value="110" /></label>
-            <label>Contrast <input id="contrastControl" type="range" min="50" max="180" value="110" /></label>
-          </div>
+          <label class="analysis-control" data-analysis-control="trace"><span class="range-heading"><span>Trace detail</span><output id="traceThresholdValue">38</output></span><input id="traceThresholdControl" type="range" min="15" max="90" value="38" /></label>
+          <label class="analysis-control" data-analysis-control="posterize"><span class="range-heading"><span>Color steps</span><output id="posterizeLevelValue">4</output></span><input id="posterizeLevelControl" type="range" min="2" max="9" value="4" /></label>
+          <label class="analysis-control" data-analysis-control="value-steps"><span class="range-heading"><span>Value steps</span><output id="valueLevelValue">5</output></span><input id="valueLevelControl" type="range" min="2" max="9" value="5" /></label>
+          <label class="analysis-control" data-analysis-control="notan"><span class="range-heading"><span>Notan threshold</span><output id="notanThresholdValue">50%</output></span><input id="notanThresholdControl" type="range" min="5" max="95" value="50" /></label>
+          <label class="analysis-control" data-analysis-control="blur"><span class="range-heading"><span>Blur amount</span><output id="blurAmountValue">8</output></span><input id="blurAmountControl" type="range" min="1" max="18" value="8" /></label>
           <fieldset class="color-field trace-color-field">
             <legend>Trace color</legend>
             <label style="--swatch:#ff3b30"><input type="radio" name="traceColor" value="#ff3b30" /><span>Red</span></label>
@@ -583,7 +575,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=24"></script>
+    <script src="app.js?v=25"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");
