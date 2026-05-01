@@ -27,6 +27,8 @@ const state = {
   opacityPlaybackIndex: 0,
   dataRevision: 0,
   overlayStageZoom: { scale: 1, x: 0, y: 0 },
+  referenceZoom: { scale: 1, x: 0, y: 0 },
+  referenceFullscreen: false,
   overlayUsingDefaultPosition: false,
   defaultTraceColor: DEFAULT_TRACE_COLOR,
   traceColor: DEFAULT_TRACE_COLOR,
@@ -147,6 +149,13 @@ function bindElements() {
     referenceOriginalPreview: document.querySelector("#referenceOriginalPreview"),
     referenceStudyCanvas: document.querySelector("#referenceStudyCanvas"),
     referencePreviewLabel: document.querySelector("#referencePreviewLabel"),
+    studyModeNotice: document.querySelector("#studyModeNotice"),
+    studyControls: document.querySelector("#view-overlay > .panel.controls"),
+    referenceCanvasViewport: document.querySelector("#referenceCanvasViewport"),
+    toggleReferenceFullscreenButton: document.querySelector("#toggleReferenceFullscreenButton"),
+    exitReferenceFullscreenButton: document.querySelector("#exitReferenceFullscreenButton"),
+    exportReferenceButton: document.querySelector("#exportReferenceButton"),
+    exportReferenceFullscreenButton: document.querySelector("#exportReferenceFullscreenButton"),
     analysisToggleLabel: document.querySelector(".overlay-trace-toggle"),
     analysisModeWrap: document.querySelector("#analysisModeWrap"),
     compareViewWrap: document.querySelector("#compareViewWrap"),
@@ -374,6 +383,7 @@ function setupTabs() {
     tab.addEventListener("click", () => {
       if (state.reviewFullscreen) toggleReviewFullscreen();
       if (document.querySelector("#view-overlay").classList.contains("overlay-fullscreen")) toggleOverlayFullscreen();
+      if (state.referenceFullscreen) toggleReferenceFullscreen(false);
       toArray(document.querySelectorAll(".tab, .view")).forEach((node) => node.classList.remove("active"));
       tab.classList.add("active");
       const view = document.querySelector(`#view-${tab.dataset.view}`);
@@ -717,13 +727,10 @@ function setupOverlay() {
   toArray(els.studyModeButtons || []).forEach((button) => {
     button.addEventListener("click", () => {
       state.studyMode = normalizeStudyMode(button.dataset.studyMode);
-      if (state.studyMode === "overlay" && els.traceToggle) els.traceToggle.checked = true;
       if (state.studyMode === "compare") state.compareView = "side-by-side";
       syncStudyMode();
       saveUiPrefs();
-      renderReferenceStudy();
-      renderReferenceTrace();
-      renderAnalysisCompare();
+      renderStudyViews();
     });
   });
   if (els.studyReferenceInput) {
@@ -732,6 +739,14 @@ function setupOverlay() {
   if (els.saveReferenceProjectButton) {
     els.saveReferenceProjectButton.addEventListener("click", saveStudyReferenceAsProject);
   }
+  if (els.toggleReferenceFullscreenButton) {
+    els.toggleReferenceFullscreenButton.addEventListener("click", () => toggleReferenceFullscreen());
+  }
+  if (els.exitReferenceFullscreenButton) {
+    els.exitReferenceFullscreenButton.addEventListener("click", () => toggleReferenceFullscreen(false));
+  }
+  if (els.exportReferenceButton) els.exportReferenceButton.addEventListener("click", exportOverlayImage);
+  if (els.exportReferenceFullscreenButton) els.exportReferenceFullscreenButton.addEventListener("click", exportOverlayImage);
   els.toggleOverlayFullscreenButton.addEventListener("click", toggleOverlayFullscreen);
   els.exitOverlayFullscreenButton.addEventListener("click", () => {
     if (document.querySelector("#view-overlay").classList.contains("overlay-fullscreen")) toggleOverlayFullscreen();
@@ -764,7 +779,9 @@ function setupOverlay() {
     renderAnalysisCompare();
   });
   els.traceToggle.addEventListener("change", () => {
+    saveUiPrefs();
     applyOverlayMode();
+    renderReferenceTrace();
   });
   if (els.analysisModeSelect) {
     els.analysisModeSelect.addEventListener("change", () => {
@@ -874,6 +891,7 @@ function setupOverlay() {
   });
 
   setupLockedOverlayZoom();
+  setupReferenceStudyZoom();
 }
 
 function handleOverlayNudge(event) {
@@ -916,8 +934,11 @@ async function handleStudyReferenceUpload() {
     els.studyProjectTitleInput.value = name || "Untitled reference";
   }
   if (els.studyReferenceStatus) els.studyReferenceStatus.textContent = "";
+  state.studyMode = "reference";
+  resetReferenceZoom();
+  syncStudyMode();
   saveUiPrefs();
-  renderReferenceStudy();
+  renderStudyViews();
 }
 
 function saveStudyReferenceAsProject() {
@@ -953,8 +974,13 @@ function saveStudyReferenceAsProject() {
   state.artworks.unshift(artwork);
   state.selectedProjectId = artwork.id;
   state.selectedOverlayArtworkId = artwork.id;
+  state.studyReferenceDataUrl = "";
+  state.studyMode = "reference";
+  saveUiPrefs();
   saveData();
   renderAll();
+  syncStudyMode();
+  renderStudyViews();
   setAppStatus(`Saved ${title} as a project.`);
 }
 
@@ -965,6 +991,24 @@ function currentStudyReferenceDataUrl() {
   return reference ? reference.dataUrl : "";
 }
 
+function studyModeBlockMessage() {
+  if (state.studyMode === "reference") return "";
+  if (state.studyReferenceDataUrl) {
+    return "This reference is not connected to a project yet. Save it as a project and add final artwork before using Overlay or Compare.";
+  }
+  const artwork = currentOverlayArtwork();
+  if (!artwork) return "Choose or save a project before using this study mode.";
+  const reference = artwork.images.find((image) => image.name === "Reference" && image.dataUrl);
+  if (!reference) return "Add a reference image before using Overlay or Compare.";
+  const comparison = artwork.images.find((image) => image.name !== "Reference" && image.dataUrl);
+  if (!comparison) return "This project does not have a final artwork image yet. Add one before using Overlay or Compare.";
+  return "";
+}
+
+function isStudyModeBlocked() {
+  return Boolean(studyModeBlockMessage());
+}
+
 function scheduleStudyRender() {
   window.clearTimeout(state.analysisRenderTimer);
   state.analysisRenderTimer = window.setTimeout(renderStudyViews, 90);
@@ -973,6 +1017,14 @@ function scheduleStudyRender() {
 function renderStudyViews() {
   window.clearTimeout(state.analysisRenderTimer);
   state.analysisRenderTimer = 0;
+  syncStudyMode();
+  if (isStudyModeBlocked()) {
+    renderReferenceStudy();
+    clearCanvas(els.traceCanvas);
+    clearCanvas(els.analysisReferenceCanvas);
+    clearCanvas(els.analysisArtworkCanvas);
+    return;
+  }
   if (state.studyMode === "overlay") {
     renderReferenceTrace();
     return;
@@ -986,14 +1038,25 @@ function renderReferenceStudy() {
   const dataUrl = currentStudyReferenceDataUrl();
   if (!dataUrl) {
     els.referenceOriginalPreview.removeAttribute("src");
+    els.referenceOriginalPreview.dataset.source = "";
     clearCanvas(els.referenceStudyCanvas);
+    if (els.referencePreviewLabel) els.referencePreviewLabel.textContent = "Analysis";
+    resetReferenceZoom();
     return;
   }
-  if (els.referenceOriginalPreview.src !== dataUrl) els.referenceOriginalPreview.src = dataUrl;
-  if (els.referenceOriginalPreview.complete && els.referenceOriginalPreview.naturalWidth) {
+  if (els.referenceOriginalPreview.dataset.source !== dataUrl) {
+    els.referenceOriginalPreview.dataset.source = dataUrl;
+    resetReferenceZoom();
+  }
+  if (els.referenceOriginalPreview.getAttribute("src") !== dataUrl) els.referenceOriginalPreview.src = dataUrl;
+  const render = () => {
     renderAnalysisToCanvas(els.referenceOriginalPreview, els.referenceStudyCanvas, { mode: state.analysisMode });
+    applyReferenceZoom();
+  };
+  if (els.referenceOriginalPreview.complete && els.referenceOriginalPreview.naturalWidth) {
+    render();
   } else {
-    els.referenceOriginalPreview.onload = () => renderAnalysisToCanvas(els.referenceOriginalPreview, els.referenceStudyCanvas, { mode: state.analysisMode });
+    els.referenceOriginalPreview.onload = render;
   }
   if (els.referencePreviewLabel) {
     els.referencePreviewLabel.textContent = analysisModeLabel(state.analysisMode);
@@ -1026,6 +1089,78 @@ function setupLockedOverlayZoom() {
       gesture = pointers.size ? startStageZoomGesture(pointers) : null;
     });
   });
+}
+
+function setupReferenceStudyZoom() {
+  if (!els.referenceCanvasViewport || !els.referenceStudyCanvas) return;
+  const pointers = new Map();
+  let gesture = null;
+
+  els.referenceCanvasViewport.addEventListener("pointerdown", (event) => {
+    if (event.target.closest("button,input,select,textarea")) return;
+    event.preventDefault();
+    pointers.set(event.pointerId, pointerPoint(event));
+    gesture = startReferenceZoomGesture(pointers);
+    els.referenceCanvasViewport.setPointerCapture(event.pointerId);
+  });
+
+  els.referenceCanvasViewport.addEventListener("pointermove", (event) => {
+    if (!pointers.has(event.pointerId) || !gesture) return;
+    event.preventDefault();
+    pointers.set(event.pointerId, pointerPoint(event));
+    updateReferenceZoomGesture(pointers, gesture);
+  });
+
+  ["pointerup", "pointercancel", "lostpointercapture"].forEach((eventName) => {
+    els.referenceCanvasViewport.addEventListener(eventName, (event) => {
+      pointers.delete(event.pointerId);
+      gesture = pointers.size ? startReferenceZoomGesture(pointers) : null;
+    });
+  });
+
+  els.referenceCanvasViewport.addEventListener("dblclick", resetReferenceZoom);
+}
+
+function startReferenceZoomGesture(pointers) {
+  const points = objectValuesFromMap(pointers);
+  return {
+    center: pointsCenter(points),
+    distance: pointsDistance(points),
+    zoom: { ...state.referenceZoom },
+  };
+}
+
+function updateReferenceZoomGesture(pointers, gesture) {
+  const points = objectValuesFromMap(pointers);
+  const center = pointsCenter(points);
+  if (points.length >= 2 && gesture.distance) {
+    const scale = pointsDistance(points) / Math.max(1, gesture.distance);
+    state.referenceZoom.scale = clampDecimal(gesture.zoom.scale * scale, 1, 5);
+  }
+  state.referenceZoom.x = gesture.zoom.x + (center.x - gesture.center.x);
+  state.referenceZoom.y = gesture.zoom.y + (center.y - gesture.center.y);
+  applyReferenceZoom();
+}
+
+function applyReferenceZoom() {
+  if (!els.referenceStudyCanvas) return;
+  const zoom = state.referenceZoom || { scale: 1, x: 0, y: 0 };
+  els.referenceStudyCanvas.style.transform = `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.scale})`;
+}
+
+function resetReferenceZoom() {
+  state.referenceZoom = { scale: 1, x: 0, y: 0 };
+  applyReferenceZoom();
+}
+
+function toggleReferenceFullscreen(force) {
+  const view = document.querySelector("#view-overlay");
+  if (!view) return;
+  const active = typeof force === "boolean" ? force : !state.referenceFullscreen;
+  state.referenceFullscreen = active;
+  view.classList.toggle("reference-fullscreen", active);
+  document.body.classList.toggle("reference-fullscreen-active", active);
+  window.setTimeout(applyReferenceZoom, 0);
 }
 
 function toggleReviewFullscreen() {
@@ -2304,18 +2439,20 @@ function syncAnalysisControls() {
   if (els.compareViewSelect) els.compareViewSelect.value = state.compareView;
   const overlayMode = state.studyMode === "overlay";
   const compareMode = state.studyMode === "compare";
+  const blocked = isStudyModeBlocked();
   const activeMode = overlayMode ? "trace" : state.analysisMode;
   if (els.analysisToggleLabel) els.analysisToggleLabel.classList.toggle("hidden", !overlayMode);
   if (els.analysisModeWrap) els.analysisModeWrap.classList.toggle("hidden", overlayMode);
   if (els.compareViewWrap) els.compareViewWrap.classList.add("hidden");
   if (els.overlayOpacityField) els.overlayOpacityField.classList.toggle("hidden", !overlayMode);
   if (els.overlayActionsRow) els.overlayActionsRow.classList.toggle("hidden", !overlayMode);
-  if (els.overlayPicker) els.overlayPicker.classList.toggle("hidden", state.studyMode === "reference");
+  if (els.overlayPicker) els.overlayPicker.classList.toggle("hidden", state.studyMode === "reference" || blocked);
+  if (els.studyControls) els.studyControls.classList.toggle("hidden", blocked && state.studyMode !== "reference");
   toArray(document.querySelectorAll("[data-analysis-control]")).forEach((control) => {
     control.classList.toggle("hidden", control.dataset.analysisControl !== activeMode);
   });
   if (els.analysisComparePanel) {
-    els.analysisComparePanel.classList.toggle("hidden", !compareMode);
+    els.analysisComparePanel.classList.toggle("hidden", !compareMode || blocked);
   }
   toArray(document.querySelectorAll("[data-analysis-cleanup]")).forEach((control) => {
     control.classList.add("hidden");
@@ -2337,11 +2474,16 @@ function syncStudyMode() {
   toArray(els.studyModeButtons || []).forEach((button) => {
     button.classList.toggle("active", button.dataset.studyMode === state.studyMode);
   });
+  const blockedMessage = studyModeBlockMessage();
+  const blocked = Boolean(blockedMessage);
+  if (els.studyModeNotice) {
+    els.studyModeNotice.textContent = blockedMessage;
+    els.studyModeNotice.classList.toggle("hidden", !blocked);
+  }
   if (els.referenceStudyPanel) els.referenceStudyPanel.classList.toggle("hidden", state.studyMode !== "reference");
-  if (els.overlayStage) els.overlayStage.classList.toggle("hidden", state.studyMode !== "overlay");
-  if (els.overlayNudge) els.overlayNudge.classList.toggle("hidden", state.studyMode !== "overlay");
-  if (els.analysisComparePanel) els.analysisComparePanel.classList.toggle("hidden", state.studyMode !== "compare");
-  if (state.studyMode === "overlay" && els.traceToggle) els.traceToggle.checked = true;
+  if (els.overlayStage) els.overlayStage.classList.toggle("hidden", state.studyMode !== "overlay" || blocked);
+  if (els.overlayNudge) els.overlayNudge.classList.toggle("hidden", state.studyMode !== "overlay" || blocked);
+  if (els.analysisComparePanel) els.analysisComparePanel.classList.toggle("hidden", state.studyMode !== "compare" || blocked);
   syncAnalysisControls();
   applyOverlayMode();
 }
@@ -2385,7 +2527,8 @@ function applyBaseSpace(baseSpace) {
 }
 
 function applyOverlayMode() {
-  const showTrace = state.studyMode === "overlay" ? true : Boolean(els.traceToggle && els.traceToggle.checked);
+  if (!els.overlayStage || !els.compareFrame || !els.referenceLayer) return;
+  const showTrace = Boolean(els.traceToggle && els.traceToggle.checked);
   els.overlayStage.classList.toggle("trace-mode", showTrace);
   els.overlayStage.classList.toggle("photo-mode", !showTrace);
   els.compareFrame.style.opacity = state.overlay.opacity / 100;
@@ -2403,7 +2546,7 @@ function renderReferenceTrace() {
 }
 
 function renderAnalysisCompare() {
-  if (!els.analysisComparePanel || state.studyMode !== "compare") return;
+  if (!els.analysisComparePanel || state.studyMode !== "compare" || isStudyModeBlocked()) return;
   if (els.referenceLayer.complete && els.referenceLayer.naturalWidth) {
     renderAnalysisToCanvas(els.referenceLayer, els.analysisReferenceCanvas, { mode: state.analysisMode });
   } else {
@@ -2441,9 +2584,10 @@ function renderAnalysisToCanvas(source, canvas, options = {}) {
 
   if (mode === "blur") {
     const blur = Number(els.blurAmountControl ? els.blurAmountControl.value : 8) || 8;
-    scratchCtx.filter = `blur(${blur}px)`;
     scratchCtx.drawImage(source, rect.x, rect.y, rect.width, rect.height);
-    scratchCtx.filter = "none";
+    const image = scratchCtx.getImageData(0, 0, size.width, size.height);
+    boxBlurImageData(image, size.width, size.height, blur);
+    scratchCtx.putImageData(image, 0, 0);
     ctx.clearRect(0, 0, size.width, size.height);
     ctx.drawImage(scratch, 0, 0);
     return;
@@ -2675,6 +2819,77 @@ function colorDistanceSquared(a, b) {
   return ((a[0] - b[0]) ** 2) + ((a[1] - b[1]) ** 2) + ((a[2] - b[2]) ** 2);
 }
 
+function boxBlurImageData(image, width, height, radius) {
+  const blurRadius = clamp(Number(radius) || 0, 0, 18);
+  if (!blurRadius) return;
+  const src = image.data;
+  const horizontal = new Uint8ClampedArray(src.length);
+  const output = new Uint8ClampedArray(src.length);
+  const windowSize = blurRadius * 2 + 1;
+
+  for (let y = 0; y < height; y += 1) {
+    let red = 0;
+    let green = 0;
+    let blue = 0;
+    let alpha = 0;
+    for (let x = -blurRadius; x <= blurRadius; x += 1) {
+      const clampedX = clamp(x, 0, width - 1);
+      const index = (y * width + clampedX) * 4;
+      red += src[index];
+      green += src[index + 1];
+      blue += src[index + 2];
+      alpha += src[index + 3];
+    }
+    for (let x = 0; x < width; x += 1) {
+      const index = (y * width + x) * 4;
+      horizontal[index] = red / windowSize;
+      horizontal[index + 1] = green / windowSize;
+      horizontal[index + 2] = blue / windowSize;
+      horizontal[index + 3] = alpha / windowSize;
+      const removeX = clamp(x - blurRadius, 0, width - 1);
+      const addX = clamp(x + blurRadius + 1, 0, width - 1);
+      const removeIndex = (y * width + removeX) * 4;
+      const addIndex = (y * width + addX) * 4;
+      red += src[addIndex] - src[removeIndex];
+      green += src[addIndex + 1] - src[removeIndex + 1];
+      blue += src[addIndex + 2] - src[removeIndex + 2];
+      alpha += src[addIndex + 3] - src[removeIndex + 3];
+    }
+  }
+
+  for (let x = 0; x < width; x += 1) {
+    let red = 0;
+    let green = 0;
+    let blue = 0;
+    let alpha = 0;
+    for (let y = -blurRadius; y <= blurRadius; y += 1) {
+      const clampedY = clamp(y, 0, height - 1);
+      const index = (clampedY * width + x) * 4;
+      red += horizontal[index];
+      green += horizontal[index + 1];
+      blue += horizontal[index + 2];
+      alpha += horizontal[index + 3];
+    }
+    for (let y = 0; y < height; y += 1) {
+      const index = (y * width + x) * 4;
+      output[index] = red / windowSize;
+      output[index + 1] = green / windowSize;
+      output[index + 2] = blue / windowSize;
+      output[index + 3] = alpha / windowSize;
+      const removeY = clamp(y - blurRadius, 0, height - 1);
+      const addY = clamp(y + blurRadius + 1, 0, height - 1);
+      const removeIndex = (removeY * width + x) * 4;
+      const addIndex = (addY * width + x) * 4;
+      red += horizontal[addIndex] - horizontal[removeIndex];
+      green += horizontal[addIndex + 1] - horizontal[removeIndex + 1];
+      blue += horizontal[addIndex + 2] - horizontal[removeIndex + 2];
+      alpha += horizontal[addIndex + 3] - horizontal[removeIndex + 3];
+    }
+  }
+
+  src.set(output);
+}
+
 function nearestColor(red, green, blue, colors) {
   return colors[nearestColorIndex(red, green, blue, colors)] || [red, green, blue];
 }
@@ -2729,16 +2944,41 @@ function preventBrowserTouchZoom(event) {
 }
 
 async function exportOverlayImage() {
-  const blob = await renderOverlayBlob();
-  if (!blob) return;
-  const artwork = currentOverlayArtwork();
-  const filename = `${slugify(artwork ? artwork.title : "studio-log-overlay")}-overlay.png`;
+  let blob = null;
+  let filename = "studio-log-overlay.png";
+  let title = "Studio Log overlay";
 
+  if (state.studyMode === "reference") {
+    renderReferenceStudy();
+    blob = await renderReferenceStudyBlob();
+    filename = `${slugify(els.studyProjectTitleInput ? els.studyProjectTitleInput.value : "studio-log-reference")}-reference-study.png`;
+    title = "Studio Log reference study";
+  } else if (state.studyMode === "compare") {
+    if (isStudyModeBlocked()) {
+      setAppStatus(studyModeBlockMessage());
+      return;
+    }
+    renderAnalysisCompare();
+    blob = await renderCompareStudyBlob();
+    const artwork = currentOverlayArtwork();
+    filename = `${slugify(artwork ? artwork.title : "studio-log-compare")}-compare.png`;
+    title = "Studio Log comparison";
+  } else {
+    blob = await renderOverlayBlob();
+    const artwork = currentOverlayArtwork();
+    filename = `${slugify(artwork ? artwork.title : "studio-log-overlay")}-overlay.png`;
+  }
+
+  if (!blob) return;
+  await shareOrDownloadBlob(blob, filename, title);
+}
+
+async function shareOrDownloadBlob(blob, filename, title) {
   if (typeof File !== "undefined" && navigator.canShare && navigator.share) {
     const file = new File([blob], filename, { type: "image/png" });
     if (navigator.canShare({ files: [file] })) {
       try {
-        await navigator.share({ files: [file], title: "Studio Log overlay" });
+        await navigator.share({ files: [file], title });
         return;
       } catch (error) {
         if (error && error.name === "AbortError") return;
@@ -2791,6 +3031,68 @@ function drawOverlayExport(ctx, stageSize, opacity = state.overlay.opacity) {
     drawContainedImage(ctx, els.tracePhotoLayer, { x: frame.x, y: frame.y, width: frame.width, height: frame.height });
   }
   ctx.restore();
+}
+
+function renderReferenceStudyBlob() {
+  return new Promise((resolve) => {
+    const source = els.referenceStudyCanvas;
+    if (!source || !source.width || !source.height) {
+      resolve(null);
+      return;
+    }
+    const scale = Math.min(3, Math.max(2, window.devicePixelRatio || 1));
+    const padding = 28;
+    const width = source.width + padding * 2;
+    const height = source.height + padding * 2;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(width * scale);
+    canvas.height = Math.round(height * scale);
+    const ctx = canvas.getContext("2d");
+    ctx.scale(scale, scale);
+    ctx.fillStyle = currentThemeBackground();
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(source, padding, padding);
+    canvas.toBlob(resolve, "image/png", 0.96);
+  });
+}
+
+function renderCompareStudyBlob() {
+  return new Promise((resolve) => {
+    const left = els.analysisReferenceCanvas;
+    const right = els.analysisArtworkCanvas;
+    if (!left || !right || !left.width || !right.width) {
+      resolve(null);
+      return;
+    }
+    const scale = Math.min(3, Math.max(2, window.devicePixelRatio || 1));
+    const padding = 28;
+    const gap = 20;
+    const labelHeight = 30;
+    const width = left.width + right.width + padding * 2 + gap;
+    const height = Math.max(left.height, right.height) + padding * 2 + labelHeight;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(width * scale);
+    canvas.height = Math.round(height * scale);
+    const ctx = canvas.getContext("2d");
+    ctx.scale(scale, scale);
+    ctx.fillStyle = currentThemeBackground();
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = currentThemeInk();
+    ctx.font = "800 16px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.fillText("Reference", padding, padding + 16);
+    ctx.fillText("Artwork", padding + left.width + gap, padding + 16);
+    ctx.drawImage(left, padding, padding + labelHeight);
+    ctx.drawImage(right, padding + left.width + gap, padding + labelHeight);
+    canvas.toBlob(resolve, "image/png", 0.96);
+  });
+}
+
+function currentThemeBackground() {
+  return document.documentElement.getAttribute("data-theme") === "light" ? "#f8fafc" : "#0c111b";
+}
+
+function currentThemeInk() {
+  return document.documentElement.getAttribute("data-theme") === "light" ? "#111827" : "#f8fafc";
 }
 
 function drawContainedImage(ctx, image, target) {

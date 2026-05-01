@@ -1274,12 +1274,50 @@ html[data-theme="light"] .stat-hero {
 
 .reference-study-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 48px 48px;
   gap: 8px;
+}
+
+.reference-study-actions .icon-compact {
+  min-width: 44px;
+  padding-right: 0;
+  padding-left: 0;
 }
 
 .reference-upload {
   margin: 0;
+}
+
+.reference-canvas-viewport {
+  display: grid;
+  min-height: min(560px, 70svh);
+  overflow: hidden;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  touch-action: none;
+}
+
+.reference-canvas-viewport #referenceStudyCanvas {
+  max-width: 100%;
+  max-height: 70svh;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.study-mode-notice {
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 12px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.study-mode-notice.hidden {
+  display: none;
 }
 
 .overlay-stage {
@@ -1380,6 +1418,11 @@ body.review-fullscreen-active {
   touch-action: none;
 }
 
+body.reference-fullscreen-active {
+  overflow: hidden;
+  touch-action: none;
+}
+
 body.overlay-fullscreen-active .topbar,
 body.overlay-fullscreen-active .tabbar,
 body.overlay-fullscreen-active .view:not(#view-overlay) {
@@ -1392,10 +1435,26 @@ body.review-fullscreen-active .view:not(#view-review) {
   display: none;
 }
 
+body.reference-fullscreen-active .topbar,
+body.reference-fullscreen-active .tabbar,
+body.reference-fullscreen-active .view:not(#view-overlay) {
+  display: none;
+}
+
 #view-overlay.overlay-fullscreen {
   position: fixed;
   inset: 0;
   z-index: 100;
+  display: block;
+  overflow: hidden;
+  padding: 0;
+  background: var(--paper);
+}
+
+#view-overlay.reference-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
   display: block;
   overflow: hidden;
   padding: 0;
@@ -1509,6 +1568,93 @@ body.review-fullscreen-active .view:not(#view-review) {
 #view-overlay.overlay-fullscreen .controls,
 #view-overlay.overlay-fullscreen .analysis-compare {
   display: none;
+}
+
+#view-overlay.reference-fullscreen .study-switch,
+#view-overlay.reference-fullscreen .controls,
+#view-overlay.reference-fullscreen .overlay-picker,
+#view-overlay.reference-fullscreen .overlay-stage,
+#view-overlay.reference-fullscreen .overlay-nudge,
+#view-overlay.reference-fullscreen #analysisComparePanel,
+#view-overlay.reference-fullscreen #studyModeNotice {
+  display: none !important;
+}
+
+#view-overlay.reference-fullscreen #referenceStudyPanel {
+  position: fixed;
+  inset: 0;
+  z-index: 121;
+  display: grid;
+  margin: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 0;
+  background: var(--paper);
+  padding: 0;
+}
+
+#view-overlay.reference-fullscreen .reference-study-actions,
+#view-overlay.reference-fullscreen #referenceStudyPanel > label,
+#view-overlay.reference-fullscreen #studyReferenceStatus,
+#view-overlay.reference-fullscreen #referencePreviewLabel {
+  display: none !important;
+}
+
+#view-overlay.reference-fullscreen .reference-analysis-grid {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+#view-overlay.reference-fullscreen .analysis-pane {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+}
+
+#view-overlay.reference-fullscreen .reference-canvas-viewport {
+  position: fixed;
+  inset: 0;
+  z-index: 122;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--paper);
+}
+
+#view-overlay.reference-fullscreen .reference-canvas-viewport #referenceStudyCanvas {
+  max-width: 100vw;
+  max-height: 100svh;
+}
+
+.reference-fullscreen-actions {
+  display: none;
+}
+
+#view-overlay.reference-fullscreen .reference-fullscreen-actions {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  z-index: 130;
+  display: flex;
+  gap: 8px;
+}
+
+.reference-fullscreen-actions button {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(16, 19, 25, 0.62);
+  color: white;
+  cursor: pointer;
+  font-size: 1.2rem;
+  font-weight: 900;
+  backdrop-filter: blur(10px);
 }
 
 #view-overlay.overlay-fullscreen .overlay-picker {

@@ -10,7 +10,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=25" />
+    <link rel="stylesheet" href="styles.css?v=27" />
   </head>
   <body>
     <main class="app-shell">
@@ -411,6 +411,8 @@
               <input id="studyReferenceInput" type="file" accept="image/*,.heic,.heif" />
             </label>
             <button class="secondary" type="button" id="saveReferenceProjectButton">Save as project</button>
+            <button class="secondary icon-compact" type="button" id="exportReferenceButton" aria-label="Export reference study">↓</button>
+            <button class="secondary icon-compact" type="button" id="toggleReferenceFullscreenButton" aria-label="Full screen reference study">⛶</button>
           </div>
           <label>
             Project title
@@ -421,10 +423,18 @@
           <div class="analysis-compare reference-analysis-grid single" aria-label="Reference analysis">
             <div class="analysis-pane">
               <span id="referencePreviewLabel">Analysis</span>
-              <canvas id="referenceStudyCanvas"></canvas>
+              <div class="reference-canvas-viewport" id="referenceCanvasViewport">
+                <canvas id="referenceStudyCanvas"></canvas>
+              </div>
             </div>
           </div>
+          <div class="reference-fullscreen-actions" aria-label="Reference study actions">
+            <button type="button" id="exportReferenceFullscreenButton" aria-label="Export reference study">↓</button>
+            <button type="button" id="exitReferenceFullscreenButton" aria-label="Exit full screen">×</button>
+          </div>
         </section>
+
+        <p class="study-mode-notice hidden" id="studyModeNotice"></p>
 
         <section class="overlay-stage" id="overlayStage">
           <div class="overlay-stage-toolbar">
@@ -575,7 +585,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=25"></script>
+    <script src="app.js?v=27"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");
