@@ -2664,10 +2664,11 @@ function adjustPixel(data, index, saturation, contrast) {
 function applyPaletteQuantization(data, width, height, rect, count) {
   const colors = samplePaletteColors(data, width, height, rect, clamp(count, 2, 10));
   if (!colors.length) return;
+  const labColors = colors.map((color) => rgbToLab(color[0], color[1], color[2]));
   for (let y = rect.yStart; y < rect.yEnd; y += 1) {
     for (let x = rect.xStart; x < rect.xEnd; x += 1) {
       const index = (y * width + x) * 4;
-      const nearest = nearestColor(data[index], data[index + 1], data[index + 2], colors);
+      const nearest = nearestColor(data[index], data[index + 1], data[index + 2], colors, labColors);
       data[index] = nearest[0];
       data[index + 1] = nearest[1];
       data[index + 2] = nearest[2];
@@ -2685,15 +2686,12 @@ function samplePaletteColors(data, width, height, rect, count) {
     }
   }
   if (!samples.length) return [];
-  samples.sort((a, b) => luma(a[0], a[1], a[2]) - luma(b[0], b[1], b[2]));
-  const colors = [];
-  for (let i = 0; i < count; i += 1) {
-    colors.push(samples[Math.floor((i / Math.max(1, count - 1)) * (samples.length - 1))].slice());
-  }
-  for (let iteration = 0; iteration < 3; iteration += 1) {
+  const colors = medianCutPalette(samples, count);
+  const labColors = colors.map((color) => rgbToLab(color[0], color[1], color[2]));
+  for (let iteration = 0; iteration < 4; iteration += 1) {
     const buckets = colors.map(() => ({ sum: [0, 0, 0], count: 0 }));
     samples.forEach((sample) => {
-      const nearestIndex = nearestColorIndex(sample[0], sample[1], sample[2], colors);
+      const nearestIndex = nearestColorIndex(sample[0], sample[1], sample[2], colors, labColors);
       buckets[nearestIndex].sum[0] += sample[0];
       buckets[nearestIndex].sum[1] += sample[1];
       buckets[nearestIndex].sum[2] += sample[2];
@@ -2702,9 +2700,66 @@ function samplePaletteColors(data, width, height, rect, count) {
     buckets.forEach((bucket, index) => {
       if (!bucket.count) return;
       colors[index] = bucket.sum.map((value) => Math.round(value / bucket.count));
+      labColors[index] = rgbToLab(colors[index][0], colors[index][1], colors[index][2]);
     });
   }
   return colors;
+}
+
+function medianCutPalette(samples, count) {
+  let boxes = [{ colors: samples.slice() }];
+  while (boxes.length < count) {
+    boxes.sort((a, b) => colorBoxRange(b) - colorBoxRange(a));
+    const box = boxes.shift();
+    if (!box || box.colors.length <= 1) {
+      if (box) boxes.push(box);
+      break;
+    }
+    const channel = widestColorChannel(box.colors);
+    box.colors.sort((a, b) => a[channel] - b[channel]);
+    const midpoint = Math.max(1, Math.floor(box.colors.length / 2));
+    boxes.push({ colors: box.colors.slice(0, midpoint) });
+    boxes.push({ colors: box.colors.slice(midpoint) });
+  }
+  return boxes
+    .map((box) => averageColor(box.colors))
+    .filter(Boolean)
+    .sort((a, b) => luma(a[0], a[1], a[2]) - luma(b[0], b[1], b[2]))
+    .slice(0, count);
+}
+
+function widestColorChannel(colors) {
+  const ranges = colorChannelRanges(colors);
+  if (ranges[1] >= ranges[0] && ranges[1] >= ranges[2]) return 1;
+  if (ranges[2] >= ranges[0] && ranges[2] >= ranges[1]) return 2;
+  return 0;
+}
+
+function colorBoxRange(box) {
+  return Math.max(...colorChannelRanges(box.colors));
+}
+
+function colorChannelRanges(colors) {
+  const mins = [255, 255, 255];
+  const maxes = [0, 0, 0];
+  colors.forEach((color) => {
+    for (let channel = 0; channel < 3; channel += 1) {
+      mins[channel] = Math.min(mins[channel], color[channel]);
+      maxes[channel] = Math.max(maxes[channel], color[channel]);
+    }
+  });
+  return maxes.map((value, index) => value - mins[index]);
+}
+
+function averageColor(colors) {
+  if (!colors.length) return null;
+  const sum = [0, 0, 0];
+  colors.forEach((color) => {
+    sum[0] += color[0];
+    sum[1] += color[1];
+    sum[2] += color[2];
+  });
+  return sum.map((value) => Math.round(value / colors.length));
 }
 
 function mergeSimilarColors(data, width, height, rect, threshold) {
@@ -2819,6 +2874,25 @@ function colorDistanceSquared(a, b) {
   return ((a[0] - b[0]) ** 2) + ((a[1] - b[1]) ** 2) + ((a[2] - b[2]) ** 2);
 }
 
+function colorDistance(a, b) {
+  const lightness = a[0] - b[0];
+  const greenRed = a[1] - b[1];
+  const blueYellow = a[2] - b[2];
+  return (lightness * lightness * 0.75) + (greenRed * greenRed) + (blueYellow * blueYellow);
+}
+
+function rgbToLab(red, green, blue) {
+  const rgb = [red, green, blue].map((value) => {
+    const channel = value / 255;
+    return channel > 0.04045 ? ((channel + 0.055) / 1.055) ** 2.4 : channel / 12.92;
+  });
+  let x = (rgb[0] * 0.4124 + rgb[1] * 0.3576 + rgb[2] * 0.1805) / 0.95047;
+  let y = (rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722) / 1;
+  let z = (rgb[0] * 0.0193 + rgb[1] * 0.1192 + rgb[2] * 0.9505) / 1.08883;
+  [x, y, z] = [x, y, z].map((value) => (value > 0.008856 ? value ** (1 / 3) : (7.787 * value) + (16 / 116)));
+  return [(116 * y) - 16, 500 * (x - y), 200 * (y - z)];
+}
+
 function boxBlurImageData(image, width, height, radius) {
   const blurRadius = clamp(Number(radius) || 0, 0, 18);
   if (!blurRadius) return;
@@ -2890,15 +2964,16 @@ function boxBlurImageData(image, width, height, radius) {
   src.set(output);
 }
 
-function nearestColor(red, green, blue, colors) {
-  return colors[nearestColorIndex(red, green, blue, colors)] || [red, green, blue];
+function nearestColor(red, green, blue, colors, labColors) {
+  return colors[nearestColorIndex(red, green, blue, colors, labColors)] || [red, green, blue];
 }
 
-function nearestColorIndex(red, green, blue, colors) {
+function nearestColorIndex(red, green, blue, colors, labColors) {
+  const targetLab = rgbToLab(red, green, blue);
   let bestIndex = 0;
   let bestDistance = Number.POSITIVE_INFINITY;
   colors.forEach((color, index) => {
-    const distance = colorDistanceSquared(color, [red, green, blue]);
+    const distance = colorDistance(labColors ? labColors[index] : rgbToLab(color[0], color[1], color[2]), targetLab);
     if (distance < bestDistance) {
       bestDistance = distance;
       bestIndex = index;
