@@ -10,19 +10,10 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=27" />
+    <link rel="stylesheet" href="styles.css?v=29" />
   </head>
   <body>
     <main class="app-shell">
-      <header class="topbar">
-        <div>
-          <h1>Studio Log</h1>
-        </div>
-        <div class="top-actions" aria-label="Project actions">
-          <button class="icon-button project-icon-button" type="button" id="toggleProjectSearchButton" aria-label="Search projects" aria-expanded="false">⌕</button>
-          <button class="icon-button project-icon-button" type="button" id="newProjectButton" aria-label="New artwork">+</button>
-        </div>
-      </header>
       <p id="appStatus" class="app-status" aria-live="polite"></p>
 
       <section class="view" id="view-log" aria-labelledby="tab-log">
@@ -238,6 +229,10 @@
       </section>
 
       <section class="view active" id="view-projects" aria-labelledby="tab-projects">
+        <div class="top-actions project-view-actions" aria-label="Project actions">
+          <button class="icon-button project-icon-button" type="button" id="toggleProjectSearchButton" aria-label="Search projects" aria-expanded="false">⌕</button>
+          <button class="icon-button project-icon-button" type="button" id="newProjectButton" aria-label="New artwork">+</button>
+        </div>
         <div id="projectSearchPanel" class="project-search-panel hidden">
           <input id="projectSearch" placeholder="title, medium, subject..." />
         </div>
@@ -405,16 +400,22 @@
         </div>
 
         <section class="reference-study panel" id="referenceStudyPanel">
-          <div class="reference-study-actions">
+          <div class="reference-toolbar">
+            <label class="study-project-source">
+              <span>Project</span>
+              <select id="studyProjectSelect">
+                <option value="">Choose a project with a reference image</option>
+              </select>
+            </label>
             <label class="file-drop reference-upload">
-              <span>Choose reference</span>
+              <span>Upload</span>
               <input id="studyReferenceInput" type="file" accept="image/*,.heic,.heif" />
             </label>
-            <button class="secondary" type="button" id="saveReferenceProjectButton">Save as project</button>
+            <button class="secondary compact-hidden" type="button" id="saveReferenceProjectButton">Save</button>
             <button class="secondary icon-compact" type="button" id="exportReferenceButton" aria-label="Export reference study">↓</button>
             <button class="secondary icon-compact" type="button" id="toggleReferenceFullscreenButton" aria-label="Full screen reference study">⛶</button>
           </div>
-          <label>
+          <label class="study-reference-title compact-hidden" id="studyProjectTitleWrap">
             Project title
             <input id="studyProjectTitleInput" placeholder="Sunday portrait study" />
           </label>
@@ -511,7 +512,7 @@
             </label>
           </div>
           <label class="analysis-control" data-analysis-control="trace"><span class="range-heading"><span>Trace detail</span><output id="traceThresholdValue">38</output></span><input id="traceThresholdControl" type="range" min="15" max="90" value="38" /></label>
-          <label class="analysis-control" data-analysis-control="posterize"><span class="range-heading"><span>Color steps</span><output id="posterizeLevelValue">4</output></span><input id="posterizeLevelControl" type="range" min="2" max="9" value="4" /></label>
+          <label class="analysis-control" data-analysis-control="posterize"><span class="range-heading"><span>Colors</span><output id="posterizeLevelValue">6</output></span><input id="posterizeLevelControl" type="range" min="2" max="64" value="6" /></label>
           <label class="analysis-control" data-analysis-control="value-steps"><span class="range-heading"><span>Value steps</span><output id="valueLevelValue">5</output></span><input id="valueLevelControl" type="range" min="2" max="9" value="5" /></label>
           <label class="analysis-control" data-analysis-control="notan"><span class="range-heading"><span>Notan threshold</span><output id="notanThresholdValue">50%</output></span><input id="notanThresholdControl" type="range" min="5" max="95" value="50" /></label>
           <label class="analysis-control" data-analysis-control="blur"><span class="range-heading"><span>Blur amount</span><output id="blurAmountValue">8</output></span><input id="blurAmountControl" type="range" min="1" max="18" value="8" /></label>
@@ -585,7 +586,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=28"></script>
+    <script src="app.js?v=29"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");

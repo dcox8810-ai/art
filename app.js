@@ -143,6 +143,8 @@ function bindElements() {
     studyModeButtons: document.querySelectorAll("[data-study-mode]"),
     referenceStudyPanel: document.querySelector("#referenceStudyPanel"),
     studyReferenceInput: document.querySelector("#studyReferenceInput"),
+    studyProjectSelect: document.querySelector("#studyProjectSelect"),
+    studyProjectTitleWrap: document.querySelector("#studyProjectTitleWrap"),
     studyProjectTitleInput: document.querySelector("#studyProjectTitleInput"),
     studyReferenceStatus: document.querySelector("#studyReferenceStatus"),
     saveReferenceProjectButton: document.querySelector("#saveReferenceProjectButton"),
@@ -251,7 +253,7 @@ function loadUiPrefs() {
   if (els.analysisModeSelect) els.analysisModeSelect.value = state.analysisMode;
   if (els.compareViewSelect) els.compareViewSelect.value = state.compareView;
   if (els.traceThresholdControl) els.traceThresholdControl.value = clamp(Number(prefs.traceDetail) || 38, 15, 90);
-  if (els.posterizeLevelControl) els.posterizeLevelControl.value = clamp(Number(prefs.posterizeLevels) || 4, 2, 9);
+  if (els.posterizeLevelControl) els.posterizeLevelControl.value = clamp(Number(prefs.posterizeLevels) || 6, 2, 64);
   if (els.valueLevelControl) els.valueLevelControl.value = clamp(Number(prefs.valueLevels) || 5, 2, 9);
   if (els.notanThresholdControl) els.notanThresholdControl.value = clamp(Number(prefs.notanThreshold) || 50, 5, 95);
   if (els.paletteCountControl) els.paletteCountControl.value = clamp(Number(prefs.paletteCount) || 5, 2, 10);
@@ -287,7 +289,7 @@ function saveUiPrefs() {
     compareView: state.compareView,
     studyMode: state.studyMode,
     traceDetail: els.traceThresholdControl ? Number(els.traceThresholdControl.value) : previous.traceDetail || 38,
-    posterizeLevels: els.posterizeLevelControl ? Number(els.posterizeLevelControl.value) : previous.posterizeLevels || 4,
+    posterizeLevels: els.posterizeLevelControl ? Number(els.posterizeLevelControl.value) : previous.posterizeLevels || 6,
     valueLevels: els.valueLevelControl ? Number(els.valueLevelControl.value) : previous.valueLevels || 5,
     notanThreshold: els.notanThresholdControl ? Number(els.notanThresholdControl.value) : previous.notanThreshold || 50,
     paletteCount: els.paletteCountControl ? Number(els.paletteCountControl.value) : previous.paletteCount || 5,
@@ -736,6 +738,9 @@ function setupOverlay() {
   if (els.studyReferenceInput) {
     els.studyReferenceInput.addEventListener("change", handleStudyReferenceUpload);
   }
+  if (els.studyProjectSelect) {
+    els.studyProjectSelect.addEventListener("change", handleStudyProjectSelect);
+  }
   if (els.saveReferenceProjectButton) {
     els.saveReferenceProjectButton.addEventListener("click", saveStudyReferenceAsProject);
   }
@@ -929,6 +934,9 @@ async function handleStudyReferenceUpload() {
   }
   const dataUrl = await readFileAsDataUrl(file);
   state.studyReferenceDataUrl = dataUrl;
+  if (els.studyProjectSelect) els.studyProjectSelect.value = "";
+  if (els.studyProjectTitleWrap) els.studyProjectTitleWrap.classList.remove("compact-hidden");
+  if (els.saveReferenceProjectButton) els.saveReferenceProjectButton.classList.remove("compact-hidden");
   if (!els.studyProjectTitleInput.value.trim()) {
     const name = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ");
     els.studyProjectTitleInput.value = name || "Untitled reference";
@@ -982,6 +990,32 @@ function saveStudyReferenceAsProject() {
   syncStudyMode();
   renderStudyViews();
   setAppStatus(`Saved ${title} as a project.`);
+}
+
+function handleStudyProjectSelect() {
+  const id = els.studyProjectSelect ? els.studyProjectSelect.value : "";
+  if (!id) return;
+  const artwork = state.artworks.find((art) => art.id === id);
+  const reference = artwork && artwork.images.find((image) => image.name === "Reference" && image.dataUrl);
+  if (!artwork || !reference) {
+    if (els.studyReferenceStatus) els.studyReferenceStatus.textContent = "That project does not have a reference image yet.";
+    return;
+  }
+  state.studyReferenceDataUrl = "";
+  state.selectedProjectId = artwork.id;
+  state.selectedOverlayArtworkId = artwork.id;
+  if (els.overlayArtwork) els.overlayArtwork.value = artwork.id;
+  if (els.studyProjectTitleInput) els.studyProjectTitleInput.value = artwork.title || "Untitled reference";
+  if (els.studyProjectTitleWrap) els.studyProjectTitleWrap.classList.add("compact-hidden");
+  if (els.saveReferenceProjectButton) els.saveReferenceProjectButton.classList.add("compact-hidden");
+  if (els.studyReferenceStatus) els.studyReferenceStatus.textContent = `Using reference from ${artwork.title || "Untitled project"}.`;
+  state.studyMode = "reference";
+  resetReferenceZoom();
+  syncStudyMode();
+  saveUiPrefs();
+  renderOverlayImageOptions();
+  renderOverlayImages();
+  renderStudyViews();
 }
 
 function currentStudyReferenceDataUrl() {
@@ -1233,6 +1267,7 @@ function renderAll() {
   renderReview();
   renderProjects();
   renderStats();
+  renderStudyProjectOptions();
   renderOverlaySelectors();
   if (els.projectDetail) els.projectDetail.classList.add("hidden");
 }
@@ -2156,6 +2191,30 @@ function renderOverlaySelectors() {
   state.selectedOverlayArtworkId = els.overlayArtwork.value || null;
   renderOverlayImageOptions();
   renderOverlayImages();
+  renderStudyProjectOptions();
+}
+
+function renderStudyProjectOptions() {
+  if (!els.studyProjectSelect) return;
+  const projects = state.artworks.filter((art) => art.images.some((image) => image.name === "Reference" && image.dataUrl));
+  const current = state.studyReferenceDataUrl ? "" : state.selectedOverlayArtworkId || els.overlayArtwork.value || "";
+  els.studyProjectSelect.innerHTML = [
+    `<option value="">${projects.length ? "Choose a project with a reference image" : "No projects with reference images yet"}</option>`,
+    ...projects.map((art) => `<option value="${art.id}">${escapeHtml(art.title || "Untitled project")}</option>`),
+  ].join("");
+  els.studyProjectSelect.disabled = !projects.length;
+  const selected = projects.find((art) => art.id === current);
+  if (selected) {
+    els.studyProjectSelect.value = current;
+    if (!state.studyReferenceDataUrl && els.studyProjectTitleInput) {
+      els.studyProjectTitleInput.value = selected.title || "Untitled reference";
+      if (els.studyProjectTitleWrap) els.studyProjectTitleWrap.classList.add("compact-hidden");
+      if (els.saveReferenceProjectButton) els.saveReferenceProjectButton.classList.add("compact-hidden");
+    }
+  } else if (state.studyReferenceDataUrl && els.studyProjectTitleWrap) {
+    els.studyProjectTitleWrap.classList.remove("compact-hidden");
+    if (els.saveReferenceProjectButton) els.saveReferenceProjectButton.classList.remove("compact-hidden");
+  }
 }
 
 function renderOverlayImageOptions() {
@@ -2605,7 +2664,7 @@ function renderAnalysisToCanvas(source, canvas, options = {}) {
   const yStart = Math.max(0, Math.floor(rect.y));
   const xEnd = Math.min(size.width, Math.ceil(rect.x + rect.width));
   const yEnd = Math.min(size.height, Math.ceil(rect.y + rect.height));
-  const colorLevels = Number(els.posterizeLevelControl ? els.posterizeLevelControl.value : 5) || 5;
+  const colorLevels = Number(els.posterizeLevelControl ? els.posterizeLevelControl.value : 6) || 6;
   const valueLevels = Number(els.valueLevelControl ? els.valueLevelControl.value : 5) || 5;
   const notanThreshold = (Number(els.notanThresholdControl ? els.notanThresholdControl.value : 50) || 50) * 2.55;
 
@@ -2639,10 +2698,11 @@ function renderAnalysisToCanvas(source, canvas, options = {}) {
     }
   }
   if (mode === "posterize") {
-    applyPaletteQuantization(data, size.width, size.height, { xStart, yStart, xEnd, yEnd }, clamp(colorLevels + 2, 3, 10));
+    applyPaletteQuantization(data, size.width, size.height, { xStart, yStart, xEnd, yEnd }, clamp(colorLevels, 2, 64));
   }
   if (["posterize", "value-steps", "notan"].includes(mode)) {
-    cleanupColorSpeckles(data, size.width, size.height, { xStart, yStart, xEnd, yEnd }, mode === "posterize" ? 2 : 1);
+    const posterizeCleanupPasses = colorLevels <= 12 ? 2 : colorLevels <= 24 ? 1 : 0;
+    cleanupColorSpeckles(data, size.width, size.height, { xStart, yStart, xEnd, yEnd }, mode === "posterize" ? posterizeCleanupPasses : 1);
   }
   ctx.clearRect(0, 0, size.width, size.height);
   ctx.putImageData(image, 0, 0);
@@ -2662,7 +2722,7 @@ function adjustPixel(data, index, saturation, contrast) {
 }
 
 function applyPaletteQuantization(data, width, height, rect, count) {
-  const colors = samplePaletteColors(data, width, height, rect, clamp(count, 2, 10));
+  const colors = samplePaletteColors(data, width, height, rect, clamp(count, 2, 64));
   if (!colors.length) return;
   const labColors = colors.map((color) => rgbToLab(color[0], color[1], color[2]));
   for (let y = rect.yStart; y < rect.yEnd; y += 1) {
@@ -2678,7 +2738,8 @@ function applyPaletteQuantization(data, width, height, rect, count) {
 
 function samplePaletteColors(data, width, height, rect, count) {
   const samples = [];
-  const step = Math.max(1, Math.floor(Math.sqrt(((rect.xEnd - rect.xStart) * (rect.yEnd - rect.yStart)) / 500)));
+  const sampleTarget = clamp(count * 260, 700, 12000);
+  const step = Math.max(1, Math.floor(Math.sqrt(((rect.xEnd - rect.xStart) * (rect.yEnd - rect.yStart)) / sampleTarget)));
   for (let y = rect.yStart; y < rect.yEnd; y += step) {
     for (let x = rect.xStart; x < rect.xEnd; x += step) {
       const index = (y * width + x) * 4;

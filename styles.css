@@ -89,6 +89,11 @@ html[data-theme="light"] .app-shell {
   gap: 8px;
 }
 
+.project-view-actions {
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
 .app-status {
   display: none;
   position: fixed;
@@ -1245,13 +1250,13 @@ html[data-theme="light"] .stat-hero {
 .study-switch {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-  margin-bottom: 12px;
-  padding: 6px;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 4px;
 }
 
 .study-switch button {
-  min-height: 38px;
+  min-height: 34px;
   border: 1px solid transparent;
   border-radius: 7px;
   background: transparent;
@@ -1268,29 +1273,57 @@ html[data-theme="light"] .stat-hero {
 
 .reference-study {
   display: grid;
-  gap: 10px;
+  gap: 6px;
   margin-bottom: 12px;
+  padding: 8px;
 }
 
-.reference-study-actions {
+.reference-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 48px 48px;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto auto 42px 42px;
+  gap: 6px;
+  align-items: end;
 }
 
-.reference-study-actions .icon-compact {
-  min-width: 44px;
+.reference-toolbar .icon-compact {
+  min-width: 40px;
   padding-right: 0;
   padding-left: 0;
 }
 
+.reference-toolbar button,
+.reference-toolbar .file-drop {
+  min-height: 44px;
+  padding: 9px 10px;
+}
+
+.reference-toolbar select {
+  min-height: 44px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
 .reference-upload {
   margin: 0;
+  min-width: 82px;
+}
+
+.study-project-source {
+  margin: 0;
+}
+
+.study-project-source span {
+  display: none;
+}
+
+.compact-hidden,
+.upload-status:empty {
+  display: none;
 }
 
 .reference-canvas-viewport {
   display: grid;
-  min-height: min(560px, 70svh);
+  min-height: min(520px, 62svh);
   overflow: hidden;
   place-items: center;
   border: 1px solid var(--line);
@@ -1304,6 +1337,16 @@ html[data-theme="light"] .stat-hero {
   max-height: 70svh;
   transform-origin: center center;
   will-change: transform;
+}
+
+@media (max-width: 560px) {
+  .reference-toolbar {
+    grid-template-columns: minmax(0, 1fr) 78px 42px 42px;
+  }
+
+  .reference-toolbar #saveReferenceProjectButton {
+    display: none;
+  }
 }
 
 .study-mode-notice {
