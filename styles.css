@@ -2196,15 +2196,54 @@ body.reference-fullscreen-active .view:not(#view-overlay) {
 
 @media (min-width: 760px) {
   .app-shell {
+    width: min(calc(100% - 32px), 1120px);
     margin-top: 18px;
     margin-bottom: 18px;
     min-height: calc(100vh - 36px);
+    padding: 14px 16px 112px;
     border: 1px solid var(--line);
     border-radius: 28px;
     box-shadow: var(--shadow);
   }
 
   .tabbar {
+    width: min(calc(100% - 32px), 1120px);
     border-radius: 0 0 28px 28px;
+  }
+
+  #view-overlay.active:has(#referenceStudyPanel:not(.hidden)) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+    gap: 12px;
+    align-items: start;
+  }
+
+  #view-overlay.active:has(#referenceStudyPanel:not(.hidden)) .study-switch,
+  #view-overlay.active:has(#referenceStudyPanel:not(.hidden)) #studyModeNotice {
+    grid-column: 1 / -1;
+  }
+
+  #view-overlay.active:has(#referenceStudyPanel:not(.hidden)) #referenceStudyPanel {
+    grid-column: 1;
+    margin-bottom: 0;
+  }
+
+  #view-overlay.active:has(#referenceStudyPanel:not(.hidden)) .controls {
+    position: sticky;
+    top: 14px;
+    grid-column: 2;
+    margin-top: 0;
+  }
+
+  #view-overlay.active:has(#referenceStudyPanel:not(.hidden)) .analysis-grid {
+    grid-template-columns: 1fr;
+  }
+
+  #view-overlay.active:has(#referenceStudyPanel:not(.hidden)) .reference-canvas-viewport {
+    min-height: min(720px, calc(100vh - 210px));
+  }
+
+  #view-overlay.active:has(#referenceStudyPanel:not(.hidden)) .reference-canvas-viewport #referenceStudyCanvas {
+    max-height: min(700px, calc(100vh - 230px));
   }
 }
