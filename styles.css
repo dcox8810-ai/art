@@ -2246,4 +2246,85 @@ body.reference-fullscreen-active .view:not(#view-overlay) {
   #view-overlay.active:has(#referenceStudyPanel:not(.hidden)) .reference-canvas-viewport #referenceStudyCanvas {
     max-height: min(700px, calc(100vh - 230px));
   }
+
+  #view-overlay.active:has(.overlay-stage:not(.hidden)) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+    gap: 12px;
+    align-items: start;
+  }
+
+  #view-overlay.active:has(.overlay-stage:not(.hidden)) .study-switch,
+  #view-overlay.active:has(.overlay-stage:not(.hidden)) #studyModeNotice {
+    grid-column: 1 / -1;
+  }
+
+  #view-overlay.active:has(.overlay-stage:not(.hidden)) .overlay-stage {
+    grid-column: 1;
+    min-height: min(720px, calc(100vh - 210px));
+    height: min(720px, calc(100vh - 210px));
+  }
+
+  #view-overlay.active:has(.overlay-stage:not(.hidden)) .overlay-nudge {
+    grid-column: 1;
+    margin: 0;
+  }
+
+  #view-overlay.active:has(.overlay-stage:not(.hidden)) .controls {
+    position: sticky;
+    top: 14px;
+    grid-column: 2;
+    grid-row: 2;
+    margin-top: 0;
+  }
+
+  #view-overlay.active:has(.overlay-stage:not(.hidden)) .overlay-picker {
+    grid-column: 2;
+    grid-row: 3;
+    margin: 0;
+  }
+
+  #view-overlay.active:has(.overlay-stage:not(.hidden)) .analysis-grid {
+    grid-template-columns: 1fr;
+  }
+
+  #view-overlay.active:has(#analysisComparePanel:not(.hidden)) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+    gap: 12px;
+    align-items: start;
+  }
+
+  #view-overlay.active:has(#analysisComparePanel:not(.hidden)) .study-switch,
+  #view-overlay.active:has(#analysisComparePanel:not(.hidden)) #studyModeNotice {
+    grid-column: 1 / -1;
+  }
+
+  #view-overlay.active:has(#analysisComparePanel:not(.hidden)) #analysisComparePanel {
+    grid-column: 1;
+    grid-row: 2 / span 2;
+    margin-bottom: 0;
+  }
+
+  #view-overlay.active:has(#analysisComparePanel:not(.hidden)) .controls {
+    position: sticky;
+    top: 14px;
+    grid-column: 2;
+    grid-row: 2;
+    margin-top: 0;
+  }
+
+  #view-overlay.active:has(#analysisComparePanel:not(.hidden)) .overlay-picker {
+    grid-column: 2;
+    grid-row: 3;
+    margin: 0;
+  }
+
+  #view-overlay.active:has(#analysisComparePanel:not(.hidden)) .analysis-grid {
+    grid-template-columns: 1fr;
+  }
+
+  #view-overlay.active:has(#analysisComparePanel:not(.hidden)) .analysis-pane canvas {
+    max-height: min(680px, calc(100vh - 250px));
+  }
 }
