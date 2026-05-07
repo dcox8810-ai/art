@@ -357,6 +357,20 @@ textarea {
   display: block;
 }
 
+.remove-stage-image {
+  display: none;
+  width: 100%;
+  margin: -2px 0 8px;
+}
+
+.preview.has-image + .remove-stage-image {
+  display: block;
+}
+
+.remove-stage-image:disabled {
+  display: none;
+}
+
 .primary,
 .secondary,
 .icon-button {

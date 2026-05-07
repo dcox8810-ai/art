@@ -1,6 +1,6 @@
 {
-  "name": "Portrait Log",
-  "short_name": "Portrait Log",
+  "name": "Studio Log",
+  "short_name": "Studio Log",
   "description": "Portrait painting habit and progress tracker.",
   "start_url": "./index.html",
   "display": "standalone",

@@ -515,6 +515,7 @@ function setupForm() {
     } else {
       state.artworks.unshift(artwork);
     }
+    syncAfterArtworkImageChange(artwork);
 
     saveData();
     resetForm();
@@ -1298,6 +1299,7 @@ function renderUploadStages() {
     const fileInput = node.querySelector(".stage-file");
     const ratingInput = node.querySelector(".stage-rating");
     const preview = node.querySelector(".preview");
+    const removeButton = node.querySelector(".remove-stage-image");
     const status = node.querySelector(".upload-status");
 
     nameInput.value = stage.name;
@@ -1306,6 +1308,7 @@ function renderUploadStages() {
       preview.src = stage.dataUrl;
       preview.classList.add("has-image");
     }
+    if (removeButton) removeButton.disabled = !stage.dataUrl;
 
     nameInput.addEventListener("input", () => {
       state.uploadStages[index].name = nameInput.value;
@@ -1330,10 +1333,41 @@ function renderUploadStages() {
       state.uploadStages[index].dataUrl = dataUrl;
       preview.src = dataUrl;
       preview.classList.add("has-image");
+      if (removeButton) removeButton.disabled = false;
     });
+    if (removeButton) {
+      removeButton.addEventListener("click", () => {
+        state.uploadStages[index].dataUrl = "";
+        preview.removeAttribute("src");
+        preview.classList.remove("has-image", "is-unsupported");
+        fileInput.value = "";
+        status.textContent = "";
+        removeButton.disabled = true;
+      });
+    }
 
     els.uploadGrid.append(node);
   });
+}
+
+function syncAfterArtworkImageChange(artwork) {
+  if (!artwork) return;
+  if (state.selectedOverlayArtworkId === artwork.id) {
+    const hasReference = artwork.images.some((image) => image.name === "Reference" && image.dataUrl);
+    if (!hasReference) {
+      state.selectedOverlayArtworkId = null;
+      state.studyMode = "reference";
+    }
+  }
+  const selectedProjectStillHasReference = state.selectedOverlayArtworkId
+    && state.artworks.some((art) => art.id === state.selectedOverlayArtworkId && art.images.some((image) => image.name === "Reference" && image.dataUrl));
+  if (!selectedProjectStillHasReference && state.selectedOverlayArtworkId === artwork.id) {
+    state.selectedOverlayArtworkId = null;
+  }
+  if (!artwork.images.some((image) => image.dataUrl)) {
+    state.reviewItems = state.reviewItems.filter((item) => item.artwork.id !== artwork.id);
+    state.reviewIndex = 0;
+  }
 }
 
 function renderSessions() {
@@ -2241,10 +2275,17 @@ function renderOverlayImageOptions() {
     els.overlayImage.innerHTML = "";
     return;
   }
-  els.overlayImage.innerHTML = artwork.images
+  const previous = els.overlayImage.value;
+  const candidates = artwork.images
     .filter((image) => image.name !== "Reference" && image.dataUrl)
+  els.overlayImage.innerHTML = candidates
     .map((image, index) => `<option value="${index}">${escapeHtml(image.name)}</option>`)
     .join("");
+  if (candidates[Number(previous)]) {
+    els.overlayImage.value = previous;
+  } else {
+    els.overlayImage.value = candidates.length ? "0" : "";
+  }
 }
 
 function renderOverlayImages() {

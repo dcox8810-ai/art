@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-    <title>Portrait Log</title>
+    <title>Studio Log</title>
     <meta name="theme-color" content="#167d7f" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="Portrait Log" />
+    <meta name="apple-mobile-web-app-title" content="Studio Log" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=33" />
+    <link rel="stylesheet" href="styles.css?v=34" />
   </head>
   <body>
     <main class="app-shell">
@@ -581,6 +581,7 @@
         </label>
         <p class="upload-status"></p>
         <img class="preview" alt="" />
+        <button class="secondary compact remove-stage-image" type="button">Remove image</button>
         <label>
           Image rating
           <select class="stage-rating">
@@ -595,7 +596,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=33"></script>
+    <script src="app.js?v=34"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");
