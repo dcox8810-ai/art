@@ -10,7 +10,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=38" />
+    <link rel="stylesheet" href="styles.css?v=39" />
   </head>
   <body>
     <main class="app-shell">
@@ -565,6 +565,7 @@
             <label style="--swatch:#3b82ff"><input type="radio" name="artworkTraceColor" value="#3b82ff" /><span>Blue</span></label>
           </fieldset>
           <div class="overlay-actions-row">
+            <button class="secondary" type="button" id="autoAlignOverlayButton">Auto align traces</button>
             <button class="secondary" type="button" id="resetOverlayButton">Reset overlay</button>
           </div>
         </div>
@@ -618,7 +619,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=38"></script>
+    <script src="app.js?v=39"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");

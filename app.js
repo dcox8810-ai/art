@@ -186,6 +186,7 @@ function bindElements() {
     overlayNudge: document.querySelector(".overlay-nudge"),
     undoOverlayButton: document.querySelector("#undoOverlayButton"),
     redoOverlayButton: document.querySelector("#redoOverlayButton"),
+    autoAlignOverlayButton: document.querySelector("#autoAlignOverlayButton"),
     resetOverlayButton: document.querySelector("#resetOverlayButton"),
     traceToggle: document.querySelector("#traceToggle"),
     artworkTraceToggle: document.querySelector("#artworkTraceToggle"),
@@ -955,6 +956,10 @@ function setupOverlay() {
     document.addEventListener(eventName, preventBrowserZoom, { passive: false });
   });
   document.addEventListener("touchmove", preventBrowserTouchZoom, { passive: false });
+
+  if (els.autoAlignOverlayButton) {
+    els.autoAlignOverlayButton.addEventListener("click", autoAlignOverlayFromTraces);
+  }
 
   els.resetOverlayButton.addEventListener("click", () => {
     pushOverlayHistory();
@@ -2555,6 +2560,64 @@ function saveCurrentOverlayPosition(options = {}) {
   saveData(options);
 }
 
+function autoAlignOverlayFromTraces() {
+  if (!els.referenceLayer.complete || !els.referenceLayer.naturalWidth || !els.artworkBaseLayer.complete || !els.artworkBaseLayer.naturalWidth) {
+    setAppStatus("Load both reference and artwork images before auto aligning.");
+    return;
+  }
+  const alignment = findTraceAlignment();
+  if (!alignment) {
+    setAppStatus("Could not find enough trace lines to auto align.");
+    return;
+  }
+  pushOverlayHistory();
+  clearOverlayRedoHistory();
+  state.overlay.x = alignment.x;
+  state.overlay.y = alignment.y;
+  state.overlay.width = alignment.width;
+  state.overlay.height = alignment.height;
+  state.overlay.rotate = alignment.rotate;
+  syncOverlayControls();
+  clampOverlayToStage();
+  applyOverlayTransform();
+  saveCurrentOverlayPosition();
+  setAppStatus(`Auto aligned traces (${Math.round(alignment.score)} match score).`);
+}
+
+function findTraceAlignment() {
+  const referenceMask = traceMaskFromImage(els.referenceLayer, 180, Number(els.traceThresholdControl ? els.traceThresholdControl.value : 38));
+  const artworkMask = traceMaskFromImage(els.artworkBaseLayer, 180, Number(els.artworkTraceThresholdControl ? els.artworkTraceThresholdControl.value : 38));
+  if (!referenceMask || !artworkMask || referenceMask.points.length < 24 || artworkMask.points.length < 24) return null;
+  const referenceBounds = pointBounds(referenceMask.points);
+  const artworkBounds = pointBounds(artworkMask.points);
+  const baseScale = Math.min(artworkBounds.width / Math.max(1, referenceBounds.width), artworkBounds.height / Math.max(1, referenceBounds.height));
+  const baseX = artworkBounds.cx - referenceBounds.cx * baseScale;
+  const baseY = artworkBounds.cy - referenceBounds.cy * baseScale;
+  const coarse = searchTraceAlignment(referenceMask, artworkMask, baseScale, baseX, baseY, [-18, -9, 0, 9, 18], [0.78, 0.9, 1, 1.12, 1.28], 8, 4);
+  if (!coarse) return null;
+  const fine = searchTraceAlignment(referenceMask, artworkMask, coarse.scale, coarse.x, coarse.y, [-6, -3, 0, 3, 6], [0.94, 0.98, 1, 1.02, 1.06], 3, 3, coarse.rotate);
+  const best = fine || coarse;
+  const stageSize = overlayStageSize();
+  const baseRect = artworkDisplayRect(stageSize.width, stageSize.height);
+  if (!baseRect) return null;
+  const refToArtScale = best.scale * (artworkMask.scale / referenceMask.scale);
+  const refXInArtPixels = best.x / artworkMask.scale;
+  const refYInArtPixels = best.y / artworkMask.scale;
+  const artDisplayScale = baseRect.width / els.artworkBaseLayer.naturalWidth;
+  const width = els.referenceLayer.naturalWidth * refToArtScale * artDisplayScale;
+  const height = els.referenceLayer.naturalHeight * refToArtScale * artDisplayScale;
+  const centerX = baseRect.x + (refXInArtPixels + (els.referenceLayer.naturalWidth * refToArtScale) / 2) * artDisplayScale;
+  const centerY = baseRect.y + (refYInArtPixels + (els.referenceLayer.naturalHeight * refToArtScale) / 2) * artDisplayScale;
+  return sanitizeOverlay({
+    ...state.overlay,
+    x: centerX - stageSize.width / 2,
+    y: centerY - stageSize.height / 2,
+    width,
+    height,
+    rotate: best.rotate,
+  });
+}
+
 function currentOverlayCompareImage() {
   const artwork = currentOverlayArtwork();
   if (!artwork) return null;
@@ -3294,6 +3357,109 @@ function artworkDisplayRect(stageWidth, stageHeight) {
     width: rect.width,
     height: rect.height,
   };
+}
+
+function traceMaskFromImage(source, maxSide, threshold) {
+  if (!source || !source.naturalWidth || !source.naturalHeight) return null;
+  const scale = Math.min(1, maxSide / Math.max(source.naturalWidth, source.naturalHeight));
+  const width = Math.max(1, Math.round(source.naturalWidth * scale));
+  const height = Math.max(1, Math.round(source.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(source, 0, 0, width, height);
+  const data = ctx.getImageData(0, 0, width, height).data;
+  const points = [];
+  const step = Math.max(1, Math.round(Math.max(width, height) / 180));
+  for (let y = 1; y < height - 1; y += step) {
+    for (let x = 1; x < width - 1; x += step) {
+      const center = grayAt(data, width, x, y);
+      const right = grayAt(data, width, x + 1, y);
+      const down = grayAt(data, width, x, y + 1);
+      const diag = grayAt(data, width, x + 1, y + 1);
+      const edge = Math.abs(center - right) + Math.abs(center - down) + Math.abs(center - diag) * 0.5;
+      if (edge > threshold) points.push({ x, y });
+    }
+  }
+  return { width, height, scale, points, set: pointSet(points) };
+}
+
+function pointSet(points) {
+  const set = new Set();
+  points.forEach((point) => set.add(`${Math.round(point.x)},${Math.round(point.y)}`));
+  return set;
+}
+
+function pointBounds(points) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  points.forEach((point) => {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  });
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: Math.max(1, maxX - minX),
+    height: Math.max(1, maxY - minY),
+    cx: (minX + maxX) / 2,
+    cy: (minY + maxY) / 2,
+  };
+}
+
+function searchTraceAlignment(referenceMask, artworkMask, baseScale, baseX, baseY, rotations, scaleMultipliers, shiftStep, shiftRadius, baseRotate = 0) {
+  let best = null;
+  rotations.forEach((rotateOffset) => {
+    const rotate = baseRotate + rotateOffset;
+    scaleMultipliers.forEach((scaleMultiplier) => {
+      const scale = baseScale * scaleMultiplier;
+      for (let dy = -shiftRadius; dy <= shiftRadius; dy += 1) {
+        for (let dx = -shiftRadius; dx <= shiftRadius; dx += 1) {
+          const x = baseX + dx * shiftStep;
+          const y = baseY + dy * shiftStep;
+          const score = scoreTraceAlignment(referenceMask.points, artworkMask.set, artworkMask.width, artworkMask.height, scale, x, y, rotate);
+          if (!best || score > best.score) best = { score, scale, x, y, rotate };
+        }
+      }
+    });
+  });
+  return best;
+}
+
+function scoreTraceAlignment(referencePoints, artworkSet, artworkWidth, artworkHeight, scale, xOffset, yOffset, rotate) {
+  const radians = (rotate * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const sampleStep = Math.max(1, Math.floor(referencePoints.length / 900));
+  let overlap = 0;
+  let inBounds = 0;
+  for (let index = 0; index < referencePoints.length; index += sampleStep) {
+    const point = referencePoints[index];
+    const scaledX = point.x * scale;
+    const scaledY = point.y * scale;
+    const x = Math.round(xOffset + scaledX * cos - scaledY * sin);
+    const y = Math.round(yOffset + scaledX * sin + scaledY * cos);
+    if (x < 0 || y < 0 || x >= artworkWidth || y >= artworkHeight) continue;
+    inBounds += 1;
+    if (
+      artworkSet.has(`${x},${y}`)
+      || artworkSet.has(`${x + 1},${y}`)
+      || artworkSet.has(`${x - 1},${y}`)
+      || artworkSet.has(`${x},${y + 1}`)
+      || artworkSet.has(`${x},${y - 1}`)
+    ) {
+      overlap += 1;
+    }
+  }
+  if (!inBounds) return 0;
+  return overlap * 3 + inBounds / 20;
 }
 
 function preventBrowserZoom(event) {
