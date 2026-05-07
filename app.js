@@ -2605,13 +2605,13 @@ function findTraceAlignment() {
   let best = null;
   centerSeeds.forEach((center) => {
     baseScales.forEach((scale) => {
-      const coarse = searchTraceAlignment(referenceMask, artworkMask, scale, center.x, center.y, [-24, -12, 0, 12, 24], [0.62, 0.78, 0.92, 1, 1.12, 1.32, 1.55], 10, 5);
+      const coarse = searchTraceAlignment(referenceMask, artworkMask, scale, center.x, center.y, [-12, -6, 0, 6, 12], [0.86, 0.94, 1, 1.08, 1.2, 1.38], 10, 5);
       if (!best || (coarse && coarse.score > best.score)) best = coarse;
     });
   });
   if (!best) return null;
-  best = searchTraceAlignment(referenceMask, artworkMask, best.scale, best.centerX, best.centerY, [-8, -4, 0, 4, 8], [0.9, 0.96, 1, 1.04, 1.1], 3, 4, best.rotate) || best;
-  best = searchTraceAlignment(referenceMask, artworkMask, best.scale, best.centerX, best.centerY, [-2, 0, 2], [0.97, 1, 1.03], 1, 3, best.rotate) || best;
+  best = searchTraceAlignment(referenceMask, artworkMask, best.scale, best.centerX, best.centerY, [-4, 0, 4], [0.96, 1, 1.04, 1.1], 3, 4, best.rotate) || best;
+  best = searchTraceAlignment(referenceMask, artworkMask, best.scale, best.centerX, best.centerY, [-1, 0, 1], [0.99, 1, 1.02], 1, 3, best.rotate) || best;
   const stageSize = overlayStageSize();
   if (stageSize.width < 80 || stageSize.height < 80) return null;
   const baseRect = artworkDisplayRect(stageSize.width, stageSize.height);
@@ -3405,8 +3405,9 @@ function traceMaskFromImage(source, maxSide, threshold) {
   const points = edgeSamples
     .filter((sample) => sample.edge > resolvedThreshold)
     .map((sample) => ({ x: sample.x, y: sample.y }));
-  const bounds = pointBounds(points);
-  return { width, height, scale, points, set: pointSet(points), distance: distanceField(points, width, height), bounds, anchor: { x: bounds.cx, y: bounds.cy } };
+  const filteredPoints = filterSubjectPoints(points, width, height);
+  const bounds = pointBounds(filteredPoints);
+  return { width, height, scale, points: filteredPoints, set: pointSet(filteredPoints), distance: distanceField(filteredPoints, width, height), bounds, anchor: { x: bounds.cx, y: bounds.cy } };
 }
 
 function adaptiveEdgeThreshold(edgeSamples) {
@@ -3420,6 +3421,85 @@ function pointSet(points) {
   const set = new Set();
   points.forEach((point) => set.add(`${Math.round(point.x)},${Math.round(point.y)}`));
   return set;
+}
+
+function filterSubjectPoints(points, width, height) {
+  const densityFiltered = removeDenseAxisArtifacts(points, width, height);
+  const components = pointComponents(densityFiltered, width, height);
+  const kept = [];
+  components.forEach((component) => {
+    const bounds = pointBounds(component);
+    const relWidth = bounds.width / width;
+    const relHeight = bounds.height / height;
+    const centerX = bounds.cx / width;
+    const centerY = bounds.cy / height;
+    const lineLike = (relWidth > 0.58 && relHeight < 0.1) || (relHeight > 0.58 && relWidth < 0.1);
+    const borderLike = lineLike && (centerY < 0.18 || centerY > 0.74 || centerX < 0.16 || centerX > 0.84);
+    const lowerTextLike = relWidth > 0.32 && relHeight < 0.18 && centerY > 0.66;
+    const tinyEdgeNoise = component.length < 5;
+    if (borderLike || lowerTextLike || tinyEdgeNoise) return;
+    kept.push(...component);
+  });
+  return kept.length >= 24 ? kept : densityFiltered;
+}
+
+function removeDenseAxisArtifacts(points, width, height) {
+  const rowCounts = new Map();
+  const colCounts = new Map();
+  points.forEach((point) => {
+    const x = Math.round(point.x);
+    const y = Math.round(point.y);
+    rowCounts.set(y, (rowCounts.get(y) || 0) + 1);
+    colCounts.set(x, (colCounts.get(x) || 0) + 1);
+  });
+  const badRows = new Set();
+  const badCols = new Set();
+  rowCounts.forEach((count, y) => {
+    if (count > width * 0.72) {
+      for (let offset = -1; offset <= 1; offset += 1) badRows.add(y + offset);
+    }
+  });
+  colCounts.forEach((count, x) => {
+    if (count > height * 0.72) {
+      for (let offset = -1; offset <= 1; offset += 1) badCols.add(x + offset);
+    }
+  });
+  const filtered = points.filter((point) => !badRows.has(Math.round(point.y)) && !badCols.has(Math.round(point.x)));
+  return filtered.length >= 24 ? filtered : points;
+}
+
+function pointComponents(points, width, height) {
+  const set = pointSet(points);
+  const seen = new Set();
+  const components = [];
+  const neighborOffsets = [-1, 0, 1];
+  points.forEach((start) => {
+    const startKey = `${Math.round(start.x)},${Math.round(start.y)}`;
+    if (seen.has(startKey)) return;
+    const queue = [start];
+    const component = [];
+    seen.add(startKey);
+    while (queue.length) {
+      const point = queue.pop();
+      const x = Math.round(point.x);
+      const y = Math.round(point.y);
+      component.push({ x, y });
+      neighborOffsets.forEach((dy) => {
+        neighborOffsets.forEach((dx) => {
+          if (!dx && !dy) return;
+          const nextX = x + dx;
+          const nextY = y + dy;
+          if (nextX < 0 || nextY < 0 || nextX >= width || nextY >= height) return;
+          const key = `${nextX},${nextY}`;
+          if (!set.has(key) || seen.has(key)) return;
+          seen.add(key);
+          queue.push({ x: nextX, y: nextY });
+        });
+      });
+    }
+    components.push(component);
+  });
+  return components;
 }
 
 function pointBounds(points) {
@@ -3529,12 +3609,20 @@ function scoreTraceAlignment(referenceMask, artworkMask, scale, centerX, centerY
   let close = 0;
   let inBounds = 0;
   let distanceTotal = 0;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
   for (let index = 0; index < referencePoints.length; index += sampleStep) {
     const point = referencePoints[index];
     const scaledX = (point.x - referenceMask.anchor.x) * scale;
     const scaledY = (point.y - referenceMask.anchor.y) * scale;
     const x = Math.round(centerX + scaledX * cos - scaledY * sin);
     const y = Math.round(centerY + scaledX * sin + scaledY * cos);
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
     if (x < 0 || y < 0 || x >= artworkWidth || y >= artworkHeight) continue;
     inBounds += 1;
     const distance = artworkMask.distance[y * artworkWidth + x] / 10;
@@ -3543,7 +3631,17 @@ function scoreTraceAlignment(referenceMask, artworkMask, scale, centerX, centerY
   }
   if (!inBounds || inBounds / sampleCount < 0.35) return -1000 + inBounds;
   const averageDistance = distanceTotal / inBounds;
-  return (close / inBounds) * 120 + (inBounds / sampleCount) * 35 - averageDistance * 7;
+  const transformedBounds = {
+    width: Math.max(1, maxX - minX),
+    height: Math.max(1, maxY - minY),
+    cx: (minX + maxX) / 2,
+    cy: (minY + maxY) / 2,
+  };
+  const artworkBounds = artworkMask.bounds;
+  const widthPenalty = Math.abs(Math.log(transformedBounds.width / Math.max(1, artworkBounds.width))) * 28;
+  const heightPenalty = Math.abs(Math.log(transformedBounds.height / Math.max(1, artworkBounds.height))) * 28;
+  const centerPenalty = (Math.hypot(transformedBounds.cx - artworkBounds.cx, transformedBounds.cy - artworkBounds.cy) / Math.max(artworkWidth, artworkHeight)) * 32;
+  return (close / inBounds) * 120 + (inBounds / sampleCount) * 35 - averageDistance * 7 - widthPenalty - heightPenalty - centerPenalty;
 }
 
 function preventBrowserZoom(event) {
