@@ -442,6 +442,27 @@ textarea {
   color: white;
 }
 
+.form-action-bar {
+  position: sticky;
+  bottom: calc(82px + env(safe-area-inset-bottom));
+  z-index: 6;
+  display: grid;
+  grid-template-columns: minmax(96px, 0.55fr) minmax(0, 1fr);
+  gap: 8px;
+  margin: 16px -6px 0;
+  padding: 8px 6px;
+  border: 1px solid rgba(39, 49, 70, 0.82);
+  border-radius: 8px;
+  background: rgba(19, 26, 39, 0.94);
+  backdrop-filter: blur(14px);
+}
+
+.form-action-bar .primary,
+.form-action-bar .secondary {
+  width: 100%;
+  margin-top: 0;
+}
+
 .secondary {
   margin-top: 10px;
   padding: 10px 12px;
@@ -2067,6 +2088,10 @@ body.reference-fullscreen-active .view:not(#view-overlay) {
 
 #artworkBaseLayer {
   z-index: 1;
+}
+
+.artwork-photo-hidden #artworkBaseLayer {
+  opacity: 0;
 }
 
 #artworkTraceCanvas {

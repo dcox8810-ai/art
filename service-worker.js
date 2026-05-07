@@ -1,4 +1,4 @@
-const CACHE_NAME = "studio-log-v36";
+const CACHE_NAME = "studio-log-v38";
 const APP_SHELL = [
   "./",
   "./index.html",

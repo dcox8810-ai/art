@@ -14,6 +14,7 @@ const state = {
   uploadStages: [],
   draftSessions: [],
   formBaseline: "",
+  pendingTabAfterSave: "",
   editingId: null,
   selectedProjectId: null,
   selectedOverlayArtworkId: null,
@@ -66,6 +67,7 @@ function bindElements() {
     topActions: document.querySelector(".top-actions"),
     artworkDateInput: document.querySelector("#artworkDateInput"),
     closeArtworkButton: document.querySelector("#closeArtworkButton"),
+    cancelArtworkButton: document.querySelector("#cancelArtworkButton"),
     appStatus: document.querySelector("#appStatus"),
     saveArtworkButton: document.querySelector("#saveArtworkButton"),
     saveStatus: document.querySelector("#saveStatus"),
@@ -187,10 +189,13 @@ function bindElements() {
     resetOverlayButton: document.querySelector("#resetOverlayButton"),
     traceToggle: document.querySelector("#traceToggle"),
     artworkTraceToggle: document.querySelector("#artworkTraceToggle"),
+    artworkPhotoToggle: document.querySelector("#artworkPhotoToggle"),
     analysisModeSelect: document.querySelector("#analysisModeSelect"),
     compareViewSelect: document.querySelector("#compareViewSelect"),
     traceThresholdControl: document.querySelector("#traceThresholdControl"),
     traceThresholdValue: document.querySelector("#traceThresholdValue"),
+    artworkTraceThresholdControl: document.querySelector("#artworkTraceThresholdControl"),
+    artworkTraceThresholdValue: document.querySelector("#artworkTraceThresholdValue"),
     traceThicknessControl: document.querySelector("#traceThicknessControl"),
     traceThicknessValue: document.querySelector("#traceThicknessValue"),
     posterizeLevelControl: document.querySelector("#posterizeLevelControl"),
@@ -248,7 +253,7 @@ function loadUiPrefs() {
   const saved = localStorage.getItem(UI_PREFS_KEY);
   const prefs = saved ? JSON.parse(saved) : {};
   state.defaultTraceColor = prefs.defaultTraceColor || DEFAULT_TRACE_COLOR;
-  state.traceColor = state.defaultTraceColor;
+  state.traceColor = prefs.traceColor || state.defaultTraceColor;
   state.artworkTraceColor = prefs.artworkTraceColor || DEFAULT_ARTWORK_TRACE_COLOR;
   applyTextSize(prefs.textSize || "default");
   if (els.textSizeSelect) els.textSizeSelect.value = prefs.textSize || "default";
@@ -268,6 +273,7 @@ function loadUiPrefs() {
   if (els.analysisModeSelect) els.analysisModeSelect.value = state.analysisMode;
   if (els.compareViewSelect) els.compareViewSelect.value = state.compareView;
   if (els.traceThresholdControl) els.traceThresholdControl.value = clamp(Number(prefs.traceDetail) || 38, 15, 90);
+  if (els.artworkTraceThresholdControl) els.artworkTraceThresholdControl.value = clamp(Number(prefs.artworkTraceDetail) || 38, 15, 90);
   if (els.traceThicknessControl) els.traceThicknessControl.value = clampDecimal(Number(prefs.traceThickness) || 1.2, 0.6, 3, 1);
   if (els.posterizeLevelControl) els.posterizeLevelControl.value = clamp(Number(prefs.posterizeLevels) || 6, 2, 64);
   if (els.valueLevelControl) els.valueLevelControl.value = clamp(Number(prefs.valueLevels) || 5, 2, 9);
@@ -301,12 +307,14 @@ function saveUiPrefs() {
     opacityPlaybackInterval: els.opacityPlaybackIntervalSelect ? Number(els.opacityPlaybackIntervalSelect.value) : previous.opacityPlaybackInterval || 400,
     goal: currentGoalSettings(),
     defaultTraceColor: state.defaultTraceColor,
+    traceColor: state.traceColor,
     artworkTraceColor: state.artworkTraceColor,
     overlayLocked: state.overlayLocked,
     analysisMode: state.analysisMode,
     compareView: state.compareView,
     studyMode: state.studyMode,
     traceDetail: els.traceThresholdControl ? Number(els.traceThresholdControl.value) : previous.traceDetail || 38,
+    artworkTraceDetail: els.artworkTraceThresholdControl ? Number(els.artworkTraceThresholdControl.value) : previous.artworkTraceDetail || 38,
     traceThickness: els.traceThicknessControl ? Number(els.traceThicknessControl.value) : previous.traceThickness || 1.2,
     posterizeLevels: els.posterizeLevelControl ? Number(els.posterizeLevelControl.value) : previous.posterizeLevels || 6,
     valueLevels: els.valueLevelControl ? Number(els.valueLevelControl.value) : previous.valueLevels || 5,
@@ -401,7 +409,13 @@ function saveData(options = {}) {
 
 function setupTabs() {
   toArray(document.querySelectorAll(".tab")).forEach((tab) => {
-    tab.addEventListener("click", () => {
+    tab.addEventListener("click", (event) => {
+      const currentView = document.querySelector(".view.active");
+      const leavingEditor = currentView && currentView.id === "view-log" && tab.dataset.view !== "log";
+      if (leavingEditor && !confirmArtworkNavigation(tab.dataset.view)) {
+        event.preventDefault();
+        return;
+      }
       if (state.reviewFullscreen) toggleReviewFullscreen();
       if (document.querySelector("#view-overlay").classList.contains("overlay-fullscreen")) toggleOverlayFullscreen();
       if (state.referenceFullscreen) toggleReferenceFullscreen(false);
@@ -479,6 +493,7 @@ function setupForm() {
   });
 
   if (els.closeArtworkButton) els.closeArtworkButton.addEventListener("click", closeArtworkEditor);
+  if (els.cancelArtworkButton) els.cancelArtworkButton.addEventListener("click", cancelArtworkChanges);
   els.newProjectButton.addEventListener("click", () => {
     resetForm();
     activateTab("log");
@@ -537,7 +552,9 @@ function setupForm() {
     resetForm();
     renderAll();
     announceSave(wasEditing ? "Saved changes." : "Saved artwork.");
-    activateTab("projects");
+    const targetTab = state.pendingTabAfterSave || "projects";
+    state.pendingTabAfterSave = "";
+    activateTab(targetTab);
   });
 
   renderUploadStages();
@@ -818,6 +835,12 @@ function setupOverlay() {
       renderArtworkTrace();
     });
   }
+  if (els.artworkPhotoToggle) {
+    els.artworkPhotoToggle.addEventListener("change", () => {
+      saveUiPrefs();
+      applyOverlayMode();
+    });
+  }
   if (els.toggleReferenceTraceFullscreenButton) {
     els.toggleReferenceTraceFullscreenButton.addEventListener("click", () => {
       els.traceToggle.checked = !els.traceToggle.checked;
@@ -852,6 +875,7 @@ function setupOverlay() {
   }
   [
     els.traceThresholdControl,
+    els.artworkTraceThresholdControl,
     els.traceThicknessControl,
     els.posterizeLevelControl,
     els.valueLevelControl,
@@ -868,8 +892,12 @@ function setupOverlay() {
       updateAnalysisReadouts();
       saveUiPrefs();
       if ([els.paletteCountControl, els.cleanupControl, els.mergeThresholdControl].includes(control)) return;
+      if (control === els.artworkTraceThresholdControl) {
+        renderArtworkTrace();
+        return;
+      }
       scheduleStudyRender();
-      if (control === els.traceThicknessControl) {
+      if (control === els.traceThresholdControl || control === els.traceThicknessControl) {
         renderReferenceTrace();
         renderArtworkTrace();
       }
@@ -877,8 +905,12 @@ function setupOverlay() {
     control.addEventListener("change", () => {
       updateAnalysisReadouts();
       saveUiPrefs();
+      if (control === els.artworkTraceThresholdControl) {
+        renderArtworkTrace();
+        return;
+      }
       renderStudyViews();
-      if (control === els.traceThicknessControl) {
+      if (control === els.traceThresholdControl || control === els.traceThicknessControl) {
         renderReferenceTrace();
         renderArtworkTrace();
       }
@@ -894,8 +926,7 @@ function setupOverlay() {
   toArray(els.traceColorInputs).forEach((input) => {
     input.addEventListener("change", () => {
       state.traceColor = input.value;
-      state.defaultTraceColor = input.value;
-      syncDefaultTraceColorControls();
+      syncTraceColorControls();
       saveUiPrefs();
       renderReferenceTrace();
       scheduleStudyRender();
@@ -2617,6 +2648,7 @@ function syncDefaultTraceColorControls() {
 
 function updateAnalysisReadouts() {
   if (els.traceThresholdValue && els.traceThresholdControl) els.traceThresholdValue.value = els.traceThresholdControl.value;
+  if (els.artworkTraceThresholdValue && els.artworkTraceThresholdControl) els.artworkTraceThresholdValue.value = els.artworkTraceThresholdControl.value;
   if (els.traceThicknessValue && els.traceThicknessControl) els.traceThicknessValue.value = Number(els.traceThicknessControl.value).toFixed(1);
   if (els.posterizeLevelValue && els.posterizeLevelControl) els.posterizeLevelValue.value = els.posterizeLevelControl.value;
   if (els.valueLevelValue && els.valueLevelControl) els.valueLevelValue.value = els.valueLevelControl.value;
@@ -2753,9 +2785,11 @@ function applyOverlayMode() {
   if (!els.overlayStage || !els.compareFrame || !els.referenceLayer) return;
   const showTrace = Boolean(els.traceToggle && els.traceToggle.checked);
   const showArtworkTrace = Boolean(els.artworkTraceToggle && els.artworkTraceToggle.checked);
+  const showArtworkPhoto = !els.artworkPhotoToggle || els.artworkPhotoToggle.checked;
   els.overlayStage.classList.toggle("trace-mode", showTrace);
   els.overlayStage.classList.toggle("photo-mode", !showTrace);
   els.overlayStage.classList.toggle("artwork-trace-mode", showArtworkTrace);
+  els.overlayStage.classList.toggle("artwork-photo-hidden", !showArtworkPhoto);
   els.compareFrame.style.opacity = state.overlay.opacity / 100;
   els.referenceLayer.style.opacity = "0";
   if (els.artworkTraceCanvas) els.artworkTraceCanvas.style.display = showArtworkTrace ? "block" : "none";
@@ -2785,6 +2819,7 @@ function renderArtworkTrace() {
     fixedWidth: Math.max(1, Math.round(rect.width)),
     fixedHeight: Math.max(1, Math.round(rect.height)),
     traceColor: state.artworkTraceColor,
+    traceThreshold: Number(els.artworkTraceThresholdControl ? els.artworkTraceThresholdControl.value : 38),
   });
   els.artworkTraceCanvas.style.left = `${rect.x}px`;
   els.artworkTraceCanvas.style.top = `${rect.y}px`;
@@ -2843,7 +2878,7 @@ function renderAnalysisToCanvas(source, canvas, options = {}) {
 
   scratchCtx.drawImage(source, rect.x, rect.y, rect.width, rect.height);
   if (mode === "trace") {
-    renderTraceAnalysis(scratchCtx, ctx, size, rect, Boolean(options.transparentTrace), options.traceColor);
+    renderTraceAnalysis(scratchCtx, ctx, size, rect, Boolean(options.transparentTrace), options.traceColor, options.traceThreshold);
     return;
   }
 
@@ -3064,10 +3099,10 @@ function cleanupColorSpeckles(data, width, height, rect, passes) {
   }
 }
 
-function renderTraceAnalysis(sourceCtx, targetCtx, size, rect, transparentTrace, traceColor = state.traceColor) {
+function renderTraceAnalysis(sourceCtx, targetCtx, size, rect, transparentTrace, traceColor = state.traceColor, traceThreshold) {
   const image = sourceCtx.getImageData(0, 0, size.width, size.height);
   const data = image.data;
-  const threshold = Number(els.traceThresholdControl ? els.traceThresholdControl.value : 38);
+  const threshold = Number.isFinite(Number(traceThreshold)) ? Number(traceThreshold) : Number(els.traceThresholdControl ? els.traceThresholdControl.value : 38);
   const thickness = clampDecimal(Number(els.traceThicknessControl ? els.traceThicknessControl.value : 1.2) || 1.2, 0.6, 3, 1);
   targetCtx.clearRect(0, 0, size.width, size.height);
   if (!transparentTrace) {
@@ -3334,7 +3369,9 @@ function renderOverlayBlob(opacity = state.overlay.opacity) {
     ctx.fillStyle = "#fbfaf7";
     ctx.fillRect(0, 0, stageSize.width, stageSize.height);
 
-    drawContainedImage(ctx, els.artworkBaseLayer, artworkDisplayRect(stageSize.width, stageSize.height));
+    if (!els.artworkPhotoToggle || els.artworkPhotoToggle.checked) {
+      drawContainedImage(ctx, els.artworkBaseLayer, artworkDisplayRect(stageSize.width, stageSize.height));
+    }
     if (els.artworkTraceToggle && els.artworkTraceToggle.checked) {
       renderArtworkTrace();
       drawAbsoluteCanvas(ctx, els.artworkTraceCanvas);
@@ -3681,18 +3718,35 @@ function markFormClean() {
   state.formBaseline = currentFormSnapshot();
 }
 
-function closeArtworkEditor() {
-  const isDirty = state.formBaseline && currentFormSnapshot() !== state.formBaseline;
-  if (isDirty) {
-    const shouldSave = window.confirm("Save changes before closing?");
-    if (shouldSave) {
-      els.form.requestSubmit();
-      return;
-    }
-    if (!window.confirm("Discard unsaved changes?")) return;
+function isArtworkFormDirty() {
+  return Boolean(state.formBaseline && currentFormSnapshot() !== state.formBaseline);
+}
+
+function confirmArtworkNavigation(targetView) {
+  if (!isArtworkFormDirty()) {
+    resetForm();
+    return true;
   }
+  const shouldSave = window.confirm("Save changes before leaving?");
+  if (shouldSave) {
+    state.pendingTabAfterSave = targetView || "projects";
+    els.form.requestSubmit();
+    return false;
+  }
+  if (!window.confirm("Discard unsaved changes?")) return false;
   resetForm();
-  activateTab("projects");
+  return true;
+}
+
+function cancelArtworkChanges() {
+  if (!isArtworkFormDirty() || window.confirm("Discard unsaved changes?")) {
+    resetForm();
+    activateTab("projects");
+  }
+}
+
+function closeArtworkEditor() {
+  if (confirmArtworkNavigation("projects")) activateTab("projects");
 }
 
 function setSelectWithCustom(select, input, wrap, value) {
