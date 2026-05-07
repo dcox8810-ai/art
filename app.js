@@ -809,13 +809,13 @@ function setupOverlay() {
   });
   els.overlayImage.addEventListener("change", renderOverlayImages);
   els.referenceLayer.addEventListener("load", () => {
+    settleDefaultOverlayPosition();
     renderReferenceTrace();
     renderAnalysisCompare();
   });
   els.artworkBaseLayer.addEventListener("load", () => {
     if (state.overlayUsingDefaultPosition) {
-      fitDefaultOverlayToArtwork();
-      state.overlayUsingDefaultPosition = false;
+      settleDefaultOverlayPosition();
     } else if (state.overlay.baseSpace) {
       applyBaseSpace(state.overlay.baseSpace);
     }
@@ -2433,6 +2433,7 @@ function renderOverlayImages() {
   if (reference && els.referenceLayer.complete) renderReferenceTrace();
   renderAnalysisCompare();
   renderReferenceStudy();
+  settleDefaultOverlayPosition();
   clampOverlayToStage();
   applyOverlayMode();
   applyOverlayTransform();
@@ -2501,6 +2502,31 @@ function defaultOverlayForArtwork() {
 
 function fitDefaultOverlayToArtwork() {
   state.overlay = sanitizeOverlay(defaultOverlayForArtwork());
+}
+
+function settleDefaultOverlayPosition() {
+  if (!state.overlayUsingDefaultPosition) return;
+  if (!els.referenceLayer.complete || !els.referenceLayer.naturalWidth || !els.artworkBaseLayer.complete || !els.artworkBaseLayer.naturalWidth) return;
+  const alignment = findTraceAlignment();
+  if (alignment) {
+    state.overlay = sanitizeOverlay({
+      ...state.overlay,
+      x: alignment.x,
+      y: alignment.y,
+      width: alignment.width,
+      height: alignment.height,
+      rotate: alignment.rotate,
+    });
+    setAppStatus(`Auto aligned traces (${Math.round(alignment.score)} match score).`);
+  } else {
+    fitDefaultOverlayToArtwork();
+  }
+  state.overlayUsingDefaultPosition = false;
+  state.overlayHistory = [];
+  state.overlayRedoHistory = [];
+  syncOverlayControls();
+  clampOverlayToStage();
+  applyOverlayTransform();
 }
 
 function pushOverlayHistory() {
