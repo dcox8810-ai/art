@@ -2585,29 +2585,45 @@ function autoAlignOverlayFromTraces() {
 }
 
 function findTraceAlignment() {
-  const referenceMask = traceMaskFromImage(els.referenceLayer, 180);
-  const artworkMask = traceMaskFromImage(els.artworkBaseLayer, 180);
+  const referenceMask = traceMaskFromImage(els.referenceLayer, 220);
+  const artworkMask = traceMaskFromImage(els.artworkBaseLayer, 220);
   if (!referenceMask || !artworkMask || referenceMask.points.length < 24 || artworkMask.points.length < 24) return null;
   const referenceBounds = pointBounds(referenceMask.points);
   const artworkBounds = pointBounds(artworkMask.points);
-  const baseScale = Math.min(artworkBounds.width / Math.max(1, referenceBounds.width), artworkBounds.height / Math.max(1, referenceBounds.height));
-  const baseX = artworkBounds.cx - referenceBounds.cx * baseScale;
-  const baseY = artworkBounds.cy - referenceBounds.cy * baseScale;
-  const coarse = searchTraceAlignment(referenceMask, artworkMask, baseScale, baseX, baseY, [-18, -9, 0, 9, 18], [0.78, 0.9, 1, 1.12, 1.28], 8, 4);
-  if (!coarse) return null;
-  const fine = searchTraceAlignment(referenceMask, artworkMask, coarse.scale, coarse.x, coarse.y, [-6, -3, 0, 3, 6], [0.94, 0.98, 1, 1.02, 1.06], 3, 3, coarse.rotate);
-  const best = fine || coarse;
+  const artworkCentroid = pointCentroid(artworkMask.points);
+  const baseScales = uniqueNumbers([
+    1,
+    artworkBounds.width / Math.max(1, referenceBounds.width),
+    artworkBounds.height / Math.max(1, referenceBounds.height),
+    Math.min(artworkBounds.width / Math.max(1, referenceBounds.width), artworkBounds.height / Math.max(1, referenceBounds.height)),
+  ]).map((scale) => clampDecimal(scale, 0.35, 2.4));
+  const centerSeeds = [
+    { x: artworkBounds.cx, y: artworkBounds.cy },
+    artworkCentroid,
+    { x: artworkMask.width / 2, y: artworkMask.height / 2 },
+  ];
+  let best = null;
+  centerSeeds.forEach((center) => {
+    baseScales.forEach((scale) => {
+      const coarse = searchTraceAlignment(referenceMask, artworkMask, scale, center.x, center.y, [-24, -12, 0, 12, 24], [0.62, 0.78, 0.92, 1, 1.12, 1.32, 1.55], 10, 5);
+      if (!best || (coarse && coarse.score > best.score)) best = coarse;
+    });
+  });
+  if (!best) return null;
+  best = searchTraceAlignment(referenceMask, artworkMask, best.scale, best.centerX, best.centerY, [-8, -4, 0, 4, 8], [0.9, 0.96, 1, 1.04, 1.1], 3, 4, best.rotate) || best;
+  best = searchTraceAlignment(referenceMask, artworkMask, best.scale, best.centerX, best.centerY, [-2, 0, 2], [0.97, 1, 1.03], 1, 3, best.rotate) || best;
   const stageSize = overlayStageSize();
+  if (stageSize.width < 80 || stageSize.height < 80) return null;
   const baseRect = artworkDisplayRect(stageSize.width, stageSize.height);
   if (!baseRect) return null;
   const refToArtScale = best.scale * (referenceMask.scale / artworkMask.scale);
-  const refXInArtPixels = best.x / artworkMask.scale;
-  const refYInArtPixels = best.y / artworkMask.scale;
+  const refCenterXInArtPixels = best.centerX / artworkMask.scale;
+  const refCenterYInArtPixels = best.centerY / artworkMask.scale;
   const artDisplayScale = baseRect.width / els.artworkBaseLayer.naturalWidth;
   const width = els.referenceLayer.naturalWidth * refToArtScale * artDisplayScale;
   const height = els.referenceLayer.naturalHeight * refToArtScale * artDisplayScale;
-  const centerX = baseRect.x + (refXInArtPixels + (els.referenceLayer.naturalWidth * refToArtScale) / 2) * artDisplayScale;
-  const centerY = baseRect.y + (refYInArtPixels + (els.referenceLayer.naturalHeight * refToArtScale) / 2) * artDisplayScale;
+  const centerX = baseRect.x + refCenterXInArtPixels * artDisplayScale;
+  const centerY = baseRect.y + refCenterYInArtPixels * artDisplayScale;
   return {
     ...sanitizeOverlay({
     ...state.overlay,
@@ -3389,7 +3405,8 @@ function traceMaskFromImage(source, maxSide, threshold) {
   const points = edgeSamples
     .filter((sample) => sample.edge > resolvedThreshold)
     .map((sample) => ({ x: sample.x, y: sample.y }));
-  return { width, height, scale, points, set: pointSet(points) };
+  const bounds = pointBounds(points);
+  return { width, height, scale, points, set: pointSet(points), distance: distanceField(points, width, height), bounds, anchor: { x: bounds.cx, y: bounds.cy } };
 }
 
 function adaptiveEdgeThreshold(edgeSamples) {
@@ -3406,6 +3423,9 @@ function pointSet(points) {
 }
 
 function pointBounds(points) {
+  if (!points.length) {
+    return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 1, height: 1, cx: 0, cy: 0 };
+  }
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -3428,7 +3448,57 @@ function pointBounds(points) {
   };
 }
 
-function searchTraceAlignment(referenceMask, artworkMask, baseScale, baseX, baseY, rotations, scaleMultipliers, shiftStep, shiftRadius, baseRotate = 0) {
+function pointCentroid(points) {
+  if (!points.length) return { x: 0, y: 0 };
+  const total = points.reduce((sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }), { x: 0, y: 0 });
+  return { x: total.x / points.length, y: total.y / points.length };
+}
+
+function uniqueNumbers(values) {
+  const numbers = [];
+  values.forEach((value) => {
+    const next = Number(value);
+    if (!Number.isFinite(next)) return;
+    if (!numbers.some((existing) => Math.abs(existing - next) < 0.01)) numbers.push(next);
+  });
+  return numbers;
+}
+
+function distanceField(points, width, height) {
+  const maxDistance = 9999;
+  const distances = new Uint16Array(width * height);
+  distances.fill(maxDistance);
+  points.forEach((point) => {
+    const x = Math.round(point.x);
+    const y = Math.round(point.y);
+    if (x >= 0 && y >= 0 && x < width && y < height) distances[y * width + x] = 0;
+  });
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = y * width + x;
+      let best = distances[index];
+      if (x > 0) best = Math.min(best, distances[index - 1] + 10);
+      if (y > 0) best = Math.min(best, distances[index - width] + 10);
+      if (x > 0 && y > 0) best = Math.min(best, distances[index - width - 1] + 14);
+      if (x < width - 1 && y > 0) best = Math.min(best, distances[index - width + 1] + 14);
+      distances[index] = best;
+    }
+  }
+  for (let y = height - 1; y >= 0; y -= 1) {
+    for (let x = width - 1; x >= 0; x -= 1) {
+      const index = y * width + x;
+      let best = distances[index];
+      if (x < width - 1) best = Math.min(best, distances[index + 1] + 10);
+      if (y < height - 1) best = Math.min(best, distances[index + width] + 10);
+      if (x < width - 1 && y < height - 1) best = Math.min(best, distances[index + width + 1] + 14);
+      if (x > 0 && y < height - 1) best = Math.min(best, distances[index + width - 1] + 14);
+      distances[index] = best;
+    }
+  }
+  return distances;
+}
+
+function searchTraceAlignment(referenceMask, artworkMask, baseScale, baseCenterX, baseCenterY, rotations, scaleMultipliers, shiftStep, shiftRadius, baseRotate = 0) {
   let best = null;
   rotations.forEach((rotateOffset) => {
     const rotate = baseRotate + rotateOffset;
@@ -3436,10 +3506,10 @@ function searchTraceAlignment(referenceMask, artworkMask, baseScale, baseX, base
       const scale = baseScale * scaleMultiplier;
       for (let dy = -shiftRadius; dy <= shiftRadius; dy += 1) {
         for (let dx = -shiftRadius; dx <= shiftRadius; dx += 1) {
-          const x = baseX + dx * shiftStep;
-          const y = baseY + dy * shiftStep;
-          const score = scoreTraceAlignment(referenceMask.points, artworkMask.set, artworkMask.width, artworkMask.height, scale, x, y, rotate);
-          if (!best || score > best.score) best = { score, scale, x, y, rotate };
+          const centerX = baseCenterX + dx * shiftStep;
+          const centerY = baseCenterY + dy * shiftStep;
+          const score = scoreTraceAlignment(referenceMask, artworkMask, scale, centerX, centerY, rotate);
+          if (!best || score > best.score) best = { score, scale, centerX, centerY, rotate };
         }
       }
     });
@@ -3447,33 +3517,33 @@ function searchTraceAlignment(referenceMask, artworkMask, baseScale, baseX, base
   return best;
 }
 
-function scoreTraceAlignment(referencePoints, artworkSet, artworkWidth, artworkHeight, scale, xOffset, yOffset, rotate) {
+function scoreTraceAlignment(referenceMask, artworkMask, scale, centerX, centerY, rotate) {
   const radians = (rotate * Math.PI) / 180;
   const cos = Math.cos(radians);
   const sin = Math.sin(radians);
+  const referencePoints = referenceMask.points;
+  const artworkWidth = artworkMask.width;
+  const artworkHeight = artworkMask.height;
   const sampleStep = Math.max(1, Math.floor(referencePoints.length / 900));
-  let overlap = 0;
+  const sampleCount = Math.ceil(referencePoints.length / sampleStep);
+  let close = 0;
   let inBounds = 0;
+  let distanceTotal = 0;
   for (let index = 0; index < referencePoints.length; index += sampleStep) {
     const point = referencePoints[index];
-    const scaledX = point.x * scale;
-    const scaledY = point.y * scale;
-    const x = Math.round(xOffset + scaledX * cos - scaledY * sin);
-    const y = Math.round(yOffset + scaledX * sin + scaledY * cos);
+    const scaledX = (point.x - referenceMask.anchor.x) * scale;
+    const scaledY = (point.y - referenceMask.anchor.y) * scale;
+    const x = Math.round(centerX + scaledX * cos - scaledY * sin);
+    const y = Math.round(centerY + scaledX * sin + scaledY * cos);
     if (x < 0 || y < 0 || x >= artworkWidth || y >= artworkHeight) continue;
     inBounds += 1;
-    if (
-      artworkSet.has(`${x},${y}`)
-      || artworkSet.has(`${x + 1},${y}`)
-      || artworkSet.has(`${x - 1},${y}`)
-      || artworkSet.has(`${x},${y + 1}`)
-      || artworkSet.has(`${x},${y - 1}`)
-    ) {
-      overlap += 1;
-    }
+    const distance = artworkMask.distance[y * artworkWidth + x] / 10;
+    distanceTotal += Math.min(distance, 24);
+    if (distance <= 2.2) close += 1;
   }
-  if (!inBounds) return 0;
-  return overlap * 3 + inBounds / 20;
+  if (!inBounds || inBounds / sampleCount < 0.35) return -1000 + inBounds;
+  const averageDistance = distanceTotal / inBounds;
+  return (close / inBounds) * 120 + (inBounds / sampleCount) * 35 - averageDistance * 7;
 }
 
 function preventBrowserZoom(event) {
