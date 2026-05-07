@@ -10,7 +10,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=34" />
+    <link rel="stylesheet" href="styles.css?v=36" />
   </head>
   <body>
     <main class="app-shell">
@@ -19,18 +19,15 @@
       <section class="view" id="view-log" aria-labelledby="tab-log">
         <form id="artworkForm" class="panel">
           <div class="form-heading">
-            <h2 id="formTitle">New Artwork</h2>
-            <button class="secondary compact hidden" type="button" id="newArtworkButton">New</button>
-          </div>
-          <div class="form-row">
-            <label>
-              Title
+            <label class="title-heading-field">
+              <span class="visually-hidden">Title</span>
               <input name="title" required placeholder="Sunday portrait study" />
             </label>
-          </div>
-          <div class="time-box compact-time-box">
-            <span>Total time</span>
-            <strong id="totalTimeDisplay">0 min</strong>
+            <div class="form-heading-meta" aria-label="Artwork summary">
+              <span id="createdDateDisplay">Created</span>
+              <strong id="totalTimeDisplay">0 min</strong>
+            </div>
+            <button class="icon-button form-close-button" type="button" id="closeArtworkButton" aria-label="Close artwork editor">×</button>
           </div>
 
           <input name="date" type="hidden" id="artworkDateInput" />
@@ -229,9 +226,12 @@
       </section>
 
       <section class="view active" id="view-projects" aria-labelledby="tab-projects">
-        <div class="top-actions project-view-actions" aria-label="Project actions">
-          <button class="icon-button project-icon-button" type="button" id="toggleProjectSearchButton" aria-label="Search projects" aria-expanded="false">⌕</button>
-          <button class="icon-button project-icon-button" type="button" id="newProjectButton" aria-label="New artwork">+</button>
+        <div class="project-view-header">
+          <h1>Studio Log</h1>
+          <div class="top-actions project-view-actions" aria-label="Project actions">
+            <button class="icon-button project-icon-button" type="button" id="toggleProjectSearchButton" aria-label="Search projects" aria-expanded="false">⌕</button>
+            <button class="icon-button project-icon-button" type="button" id="newProjectButton" aria-label="New artwork">+</button>
+          </div>
         </div>
         <div id="projectSearchPanel" class="project-search-panel hidden">
           <input id="projectSearch" placeholder="title, medium, subject..." />
@@ -245,8 +245,8 @@
             </div>
           </div>
           <div class="project-detail-actions">
-            <button class="primary slim" type="button" id="projectDetailUpdateButton">Update progress</button>
-            <button class="secondary slim" type="button" id="projectDetailOverlayButton">Open overlay</button>
+            <button class="primary slim" type="button" id="projectDetailUpdateButton">Edit</button>
+            <button class="secondary slim" type="button" id="projectDetailOverlayButton">Study</button>
             <button class="secondary slim" type="button" id="projectDetailDuplicateButton">Duplicate</button>
             <button class="secondary slim" type="button" id="projectDetailDeleteButton">Delete</button>
           </div>
@@ -335,6 +335,10 @@
               <option value="200">0.2 seconds</option>
               <option value="100">0.1 seconds</option>
             </select>
+          </label>
+          <label>
+            <span class="range-heading"><span>Trace thickness</span><output id="traceThicknessValue">1.2</output></span>
+            <input id="traceThicknessControl" type="range" min="0.6" max="3" step="0.1" value="1.2" />
           </label>
           <div class="goal-settings">
             <h3>Practice goal</h3>
@@ -440,8 +444,8 @@
         <section class="overlay-stage" id="overlayStage">
           <div class="overlay-stage-toolbar">
             <label class="toggle-row overlay-lock-inline" aria-label="Lock overlay"><input id="overlayLockToggle" type="checkbox" /><span class="lock-icon" aria-hidden="true"></span></label>
-            <button class="secondary compact icon-compact" type="button" id="undoOverlayButton" aria-label="Undo overlay adjustment">↺</button>
-            <button class="secondary compact icon-compact" type="button" id="redoOverlayButton" aria-label="Redo overlay adjustment">↻</button>
+            <button class="secondary compact icon-compact" type="button" id="undoOverlayButton" aria-label="Undo overlay adjustment">↩</button>
+            <button class="secondary compact icon-compact" type="button" id="redoOverlayButton" aria-label="Redo overlay adjustment">↪</button>
             <button class="secondary compact icon-compact" type="button" id="toggleOpacityPlaybackButton" aria-label="Play opacity cycle">▶</button>
             <button class="secondary compact icon-compact" type="button" id="exportOverlayToolbarButton" aria-label="Export overlay image">↓</button>
             <button class="secondary compact icon-compact" type="button" id="toggleOverlayFullscreenButton" aria-label="Full screen overlay">⛶</button>
@@ -449,6 +453,7 @@
           <div id="overlayViewport" class="overlay-viewport">
             <img id="referenceLayer" alt="Reference image" />
             <img id="artworkBaseLayer" alt="Artwork image" />
+            <canvas id="artworkTraceCanvas" aria-label="Artwork trace overlay"></canvas>
             <div id="compareFrame" class="compare-frame">
               <img id="tracePhotoLayer" alt="Reference photo overlay" />
               <canvas id="traceCanvas" aria-label="Reference trace overlay"></canvas>
@@ -485,6 +490,8 @@
         </section>
 
         <div class="fullscreen-actions" aria-label="Overlay actions">
+          <button type="button" id="toggleReferenceTraceFullscreenButton" aria-label="Toggle reference trace">R</button>
+          <button type="button" id="toggleArtworkTraceFullscreenButton" aria-label="Toggle artwork trace">A</button>
           <button type="button" id="toggleOpacityPlaybackFullscreenButton" aria-label="Play opacity cycle">▶</button>
           <button type="button" id="exportOverlayFullscreenButton" aria-label="Export overlay image">↓</button>
           <button type="button" id="exitOverlayFullscreenButton" aria-label="Exit full screen">×</button>
@@ -499,6 +506,7 @@
 
         <div class="panel controls">
           <label class="toggle-row overlay-trace-toggle"><input id="traceToggle" type="checkbox" checked /> Show trace lines</label>
+          <label class="toggle-row artwork-trace-toggle"><input id="artworkTraceToggle" type="checkbox" /> Show artwork trace</label>
           <div class="analysis-grid">
             <label id="analysisModeWrap">
               Analysis mode
@@ -520,6 +528,14 @@
               </select>
             </label>
           </div>
+          <fieldset class="opacity-field">
+            <legend>Overlay opacity</legend>
+            <label><input type="radio" name="overlayOpacity" value="0" /> 0%</label>
+            <label><input type="radio" name="overlayOpacity" value="35" /> 35%</label>
+            <label><input type="radio" name="overlayOpacity" value="60" /> 60%</label>
+            <label><input type="radio" name="overlayOpacity" value="85" checked /> 85%</label>
+            <label><input type="radio" name="overlayOpacity" value="100" /> 100%</label>
+          </fieldset>
           <label class="analysis-control" data-analysis-control="trace"><span class="range-heading"><span>Trace detail</span><output id="traceThresholdValue">38</output></span><input id="traceThresholdControl" type="range" min="15" max="90" value="38" /></label>
           <label class="analysis-control" data-analysis-control="posterize"><span class="range-heading"><span>Colors</span><output id="posterizeLevelValue">6</output></span><input id="posterizeLevelControl" type="range" min="2" max="64" value="6" /></label>
           <label class="analysis-control" data-analysis-control="value-steps"><span class="range-heading"><span>Value steps</span><output id="valueLevelValue">5</output></span><input id="valueLevelControl" type="range" min="2" max="9" value="5" /></label>
@@ -534,13 +550,14 @@
             <label style="--swatch:#ffd60a"><input type="radio" name="traceColor" value="#ffd60a" /><span>Gold</span></label>
             <label style="--swatch:#3b82ff"><input type="radio" name="traceColor" value="#3b82ff" /><span>Blue</span></label>
           </fieldset>
-          <fieldset class="opacity-field">
-            <legend>Overlay opacity</legend>
-            <label><input type="radio" name="overlayOpacity" value="0" /> 0%</label>
-            <label><input type="radio" name="overlayOpacity" value="35" /> 35%</label>
-            <label><input type="radio" name="overlayOpacity" value="60" /> 60%</label>
-            <label><input type="radio" name="overlayOpacity" value="85" checked /> 85%</label>
-            <label><input type="radio" name="overlayOpacity" value="100" /> 100%</label>
+          <fieldset class="color-field artwork-trace-color-field">
+            <legend>Artwork trace color</legend>
+            <label style="--swatch:#ff3b30"><input type="radio" name="artworkTraceColor" value="#ff3b30" checked /><span>Red</span></label>
+            <label style="--swatch:#020617"><input type="radio" name="artworkTraceColor" value="#020617" /><span>Black</span></label>
+            <label style="--swatch:#ffffff"><input type="radio" name="artworkTraceColor" value="#ffffff" /><span>White</span></label>
+            <label style="--swatch:#00e676"><input type="radio" name="artworkTraceColor" value="#00e676" /><span>Green</span></label>
+            <label style="--swatch:#ffd60a"><input type="radio" name="artworkTraceColor" value="#ffd60a" /><span>Gold</span></label>
+            <label style="--swatch:#3b82ff"><input type="radio" name="artworkTraceColor" value="#3b82ff" /><span>Blue</span></label>
           </fieldset>
           <div class="overlay-actions-row">
             <button class="secondary" type="button" id="resetOverlayButton">Reset overlay</button>
@@ -596,7 +613,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=34"></script>
+    <script src="app.js?v=36"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");

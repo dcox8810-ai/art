@@ -91,7 +91,21 @@ html[data-theme="light"] .app-shell {
 
 .project-view-actions {
   justify-content: flex-end;
+}
+
+.project-view-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 8px;
+}
+
+.project-view-header h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.28rem;
+  line-height: 1.05;
 }
 
 .app-status {
@@ -178,15 +192,55 @@ h2 {
 }
 
 .form-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: start;
   gap: 10px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
-.form-heading h2 {
-  margin-bottom: 0;
+.title-heading-field {
+  gap: 0;
+}
+
+.title-heading-field input {
+  border-color: transparent;
+  background: transparent;
+  padding: 0;
+  color: var(--ink);
+  font-size: 1.2rem;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.title-heading-field input:focus {
+  border-color: var(--teal);
+  background: var(--panel-strong);
+  padding: 8px 9px;
+}
+
+.form-heading-meta {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  min-width: 76px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: right;
+}
+
+.form-heading-meta strong {
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.form-close-button {
+  width: 36px;
+  height: 36px;
+  font-size: 1.25rem;
+  line-height: 1;
 }
 
 label {
@@ -1461,7 +1515,7 @@ html[data-theme="light"] .stat-hero {
 
 .lock-icon {
   position: relative;
-  width: 18px;
+  width: 17px;
   height: 15px;
   border: 2px solid currentColor;
   border-radius: 4px;
@@ -1471,14 +1525,14 @@ html[data-theme="light"] .stat-hero {
   content: "";
   position: absolute;
   top: -11px;
-  left: 7px;
-  width: 12px;
+  left: 5px;
+  width: 11px;
   height: 11px;
   border: 2px solid currentColor;
   border-bottom: 0;
   border-radius: 10px 10px 0 0;
-  transform: rotate(22deg);
-  transform-origin: bottom left;
+  transform: rotate(-34deg);
+  transform-origin: bottom right;
 }
 
 .overlay-lock-inline:has(input:checked) {
@@ -1829,6 +1883,12 @@ body.reference-fullscreen-active .view:not(#view-overlay) {
   backdrop-filter: blur(10px);
 }
 
+.fullscreen-actions button.active {
+  border-color: var(--teal);
+  background: rgba(61, 169, 165, 0.2);
+  color: var(--teal);
+}
+
 #view-overlay.overlay-fullscreen .fullscreen-opacity {
   position: fixed;
   right: max(10px, env(safe-area-inset-right));
@@ -2007,6 +2067,13 @@ body.reference-fullscreen-active .view:not(#view-overlay) {
 
 #artworkBaseLayer {
   z-index: 1;
+}
+
+#artworkTraceCanvas {
+  position: absolute;
+  z-index: 1;
+  display: none;
+  pointer-events: none;
 }
 
 .compare-frame {
