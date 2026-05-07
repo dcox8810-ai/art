@@ -3635,12 +3635,15 @@ function scoreTraceAlignment(referenceMask, artworkMask, scale, centerX, centerY
   let close = 0;
   let inBounds = 0;
   let distanceTotal = 0;
+  let sampleWeightTotal = 0;
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
   for (let index = 0; index < referencePoints.length; index += sampleStep) {
     const point = referencePoints[index];
+    const weight = portraitFeatureWeight(point, referenceMask.bounds);
+    sampleWeightTotal += weight;
     const scaledX = (point.x - referenceMask.anchor.x) * scale;
     const scaledY = (point.y - referenceMask.anchor.y) * scale;
     const x = Math.round(centerX + scaledX * cos - scaledY * sin);
@@ -3650,12 +3653,12 @@ function scoreTraceAlignment(referenceMask, artworkMask, scale, centerX, centerY
     maxX = Math.max(maxX, x);
     maxY = Math.max(maxY, y);
     if (x < 0 || y < 0 || x >= artworkWidth || y >= artworkHeight) continue;
-    inBounds += 1;
+    inBounds += weight;
     const distance = artworkMask.distance[y * artworkWidth + x] / 10;
-    distanceTotal += Math.min(distance, 24);
-    if (distance <= 2.2) close += 1;
+    distanceTotal += Math.min(distance, 24) * weight;
+    if (distance <= 2.2) close += weight;
   }
-  if (!inBounds || inBounds / sampleCount < 0.35) return -1000 + inBounds;
+  if (!inBounds || !sampleWeightTotal || inBounds / sampleWeightTotal < 0.35) return -1000 + inBounds;
   const averageDistance = distanceTotal / inBounds;
   const transformedBounds = {
     width: Math.max(1, maxX - minX),
@@ -3667,7 +3670,21 @@ function scoreTraceAlignment(referenceMask, artworkMask, scale, centerX, centerY
   const widthPenalty = Math.abs(Math.log(transformedBounds.width / Math.max(1, artworkBounds.width))) * 28;
   const heightPenalty = Math.abs(Math.log(transformedBounds.height / Math.max(1, artworkBounds.height))) * 28;
   const centerPenalty = (Math.hypot(transformedBounds.cx - artworkBounds.cx, transformedBounds.cy - artworkBounds.cy) / Math.max(artworkWidth, artworkHeight)) * 32;
-  return (close / inBounds) * 120 + (inBounds / sampleCount) * 35 - averageDistance * 7 - widthPenalty - heightPenalty - centerPenalty;
+  return (close / inBounds) * 130 + (inBounds / sampleWeightTotal) * 35 - averageDistance * 7 - widthPenalty - heightPenalty - centerPenalty;
+}
+
+function portraitFeatureWeight(point, bounds) {
+  const width = Math.max(1, bounds.width);
+  const height = Math.max(1, bounds.height);
+  const xRel = (point.x - bounds.cx) / (width / 2);
+  const yRel = (point.y - bounds.minY) / height;
+  const absX = Math.abs(xRel);
+  let weight = 1;
+  if (absX < 0.62 && yRel > 0.18 && yRel < 0.74) weight += 0.9;
+  if (absX < 0.42 && yRel > 0.28 && yRel < 0.68) weight += 1.1;
+  if (absX < 0.72 && yRel > 0.25 && yRel < 0.48) weight += 0.55;
+  if (yRel > 0.78 || absX > 0.9) weight *= 0.65;
+  return weight;
 }
 
 function preventBrowserZoom(event) {
