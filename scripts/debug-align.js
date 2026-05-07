@@ -7,6 +7,7 @@ const sharp = require("sharp");
 const backupPath = process.argv[2] || "test-fixtures/studio-log-backup-2026-05-07.json";
 const projectQuery = (process.argv[3] || "Sky arts cheeks").toLowerCase();
 const outDir = process.argv[4] || "alignment-debug";
+const alignmentMethod = process.argv[5] === "trace" ? "trace" : "portrait";
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, Math.round(value)));
@@ -235,7 +236,7 @@ function distanceField(points, width, height) {
   return distances;
 }
 
-function searchTraceAlignment(referenceMask, artworkMask, baseScale, baseCenterX, baseCenterY, rotations, scaleMultipliers, shiftStep, shiftRadius, baseRotate = 0) {
+function searchTraceAlignment(referenceMask, artworkMask, baseScale, baseCenterX, baseCenterY, rotations, scaleMultipliers, shiftStep, shiftRadius, baseRotate = 0, method = "portrait") {
   let best = null;
   rotations.forEach((rotateOffset) => {
     const rotate = baseRotate + rotateOffset;
@@ -245,7 +246,7 @@ function searchTraceAlignment(referenceMask, artworkMask, baseScale, baseCenterX
         for (let dx = -shiftRadius; dx <= shiftRadius; dx += 1) {
           const centerX = baseCenterX + dx * shiftStep;
           const centerY = baseCenterY + dy * shiftStep;
-          const score = scoreTraceAlignment(referenceMask, artworkMask, scale, centerX, centerY, rotate);
+          const score = scoreTraceAlignment(referenceMask, artworkMask, scale, centerX, centerY, rotate, method);
           if (!best || score > best.score) best = { score, scale, centerX, centerY, rotate };
         }
       }
@@ -254,7 +255,7 @@ function searchTraceAlignment(referenceMask, artworkMask, baseScale, baseCenterX
   return best;
 }
 
-function scoreTraceAlignment(referenceMask, artworkMask, scale, centerX, centerY, rotate) {
+function scoreTraceAlignment(referenceMask, artworkMask, scale, centerX, centerY, rotate, method = "portrait") {
   const radians = (rotate * Math.PI) / 180;
   const cos = Math.cos(radians);
   const sin = Math.sin(radians);
@@ -270,7 +271,7 @@ function scoreTraceAlignment(referenceMask, artworkMask, scale, centerX, centerY
   let maxY = -Infinity;
   for (let index = 0; index < referenceMask.points.length; index += sampleStep) {
     const point = referenceMask.points[index];
-    const weight = portraitFeatureWeight(point, referenceMask.bounds);
+    const weight = method === "portrait" ? portraitFeatureWeight(point, referenceMask.bounds) : 1;
     sampleWeightTotal += weight;
     const scaledX = (point.x - referenceMask.anchor.x) * scale;
     const scaledY = (point.y - referenceMask.anchor.y) * scale;
@@ -315,7 +316,7 @@ function portraitFeatureWeight(point, bounds) {
   return weight;
 }
 
-function align(referenceMask, artworkMask) {
+function align(referenceMask, artworkMask, method = "portrait") {
   const referenceBounds = pointBounds(referenceMask.points);
   const artworkBounds = pointBounds(artworkMask.points);
   const artworkCentroid = pointCentroid(artworkMask.points);
@@ -333,13 +334,13 @@ function align(referenceMask, artworkMask) {
   let best = null;
   centerSeeds.forEach((center) => {
     baseScales.forEach((scale) => {
-      const coarse = searchTraceAlignment(referenceMask, artworkMask, scale, center.x, center.y, [-12, -6, 0, 6, 12], [0.86, 0.94, 1, 1.08, 1.2, 1.38], 10, 5);
+      const coarse = searchTraceAlignment(referenceMask, artworkMask, scale, center.x, center.y, [-12, -6, 0, 6, 12], [0.86, 0.94, 1, 1.08, 1.2, 1.38], 10, 5, 0, method);
       if (!best || (coarse && coarse.score > best.score)) best = coarse;
     });
   });
   if (!best) return null;
-  best = searchTraceAlignment(referenceMask, artworkMask, best.scale, best.centerX, best.centerY, [-4, 0, 4], [0.96, 1, 1.04, 1.1], 3, 4, best.rotate) || best;
-  best = searchTraceAlignment(referenceMask, artworkMask, best.scale, best.centerX, best.centerY, [-1, 0, 1], [0.99, 1, 1.02], 1, 3, best.rotate) || best;
+  best = searchTraceAlignment(referenceMask, artworkMask, best.scale, best.centerX, best.centerY, [-4, 0, 4], [0.96, 1, 1.04, 1.1], 3, 4, best.rotate, method) || best;
+  best = searchTraceAlignment(referenceMask, artworkMask, best.scale, best.centerX, best.centerY, [-1, 0, 1], [0.99, 1, 1.02], 1, 3, best.rotate, method) || best;
   return best;
 }
 
@@ -397,18 +398,19 @@ async function main() {
   const artworkImage = await loadImage(final.dataUrl);
   const referenceMask = traceMaskFromRaw(referenceImage);
   const artworkMask = traceMaskFromRaw(artworkImage);
-  const best = align(referenceMask, artworkMask);
+  const best = align(referenceMask, artworkMask, alignmentMethod);
   if (!best) throw new Error("No alignment found.");
   await drawTrace(referenceMask, [255, 40, 40]).toFile(path.join(outDir, "reference-trace.png"));
   await drawTrace(artworkMask, [30, 120, 255]).toFile(path.join(outDir, "artwork-trace.png"));
   await drawComposite(referenceMask, artworkMask, best, path.join(outDir, "alignment-composite.png"));
   fs.writeFileSync(path.join(outDir, "alignment-result.json"), JSON.stringify({
     project: artwork.title,
+    method: alignmentMethod,
     reference: { naturalWidth: referenceImage.naturalWidth, naturalHeight: referenceImage.naturalHeight, points: referenceMask.points.length, threshold: referenceMask.threshold, bounds: referenceMask.bounds },
     artwork: { naturalWidth: artworkImage.naturalWidth, naturalHeight: artworkImage.naturalHeight, points: artworkMask.points.length, threshold: artworkMask.threshold, bounds: artworkMask.bounds },
     alignment: best,
   }, null, 2));
-  console.log(JSON.stringify({ project: artwork.title, best, outDir }, null, 2));
+  console.log(JSON.stringify({ project: artwork.title, method: alignmentMethod, best, outDir }, null, 2));
 }
 
 main().catch((error) => {

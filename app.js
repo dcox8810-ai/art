@@ -193,6 +193,7 @@ function bindElements() {
     artworkPhotoToggle: document.querySelector("#artworkPhotoToggle"),
     analysisModeSelect: document.querySelector("#analysisModeSelect"),
     compareViewSelect: document.querySelector("#compareViewSelect"),
+    alignmentMethodSelect: document.querySelector("#alignmentMethodSelect"),
     traceThresholdControl: document.querySelector("#traceThresholdControl"),
     traceThresholdValue: document.querySelector("#traceThresholdValue"),
     artworkTraceThresholdControl: document.querySelector("#artworkTraceThresholdControl"),
@@ -273,6 +274,7 @@ function loadUiPrefs() {
   state.studyMode = normalizeStudyMode(prefs.studyMode);
   if (els.analysisModeSelect) els.analysisModeSelect.value = state.analysisMode;
   if (els.compareViewSelect) els.compareViewSelect.value = state.compareView;
+  if (els.alignmentMethodSelect) els.alignmentMethodSelect.value = normalizeAlignmentMethod(prefs.alignmentMethod);
   if (els.traceThresholdControl) els.traceThresholdControl.value = clamp(Number(prefs.traceDetail) || 38, 15, 90);
   if (els.artworkTraceThresholdControl) els.artworkTraceThresholdControl.value = clamp(Number(prefs.artworkTraceDetail) || 38, 15, 90);
   if (els.traceThicknessControl) els.traceThicknessControl.value = clampDecimal(Number(prefs.traceThickness) || 1.2, 0.6, 3, 1);
@@ -314,6 +316,7 @@ function saveUiPrefs() {
     analysisMode: state.analysisMode,
     compareView: state.compareView,
     studyMode: state.studyMode,
+    alignmentMethod: els.alignmentMethodSelect ? normalizeAlignmentMethod(els.alignmentMethodSelect.value) : previous.alignmentMethod || "portrait",
     traceDetail: els.traceThresholdControl ? Number(els.traceThresholdControl.value) : previous.traceDetail || 38,
     artworkTraceDetail: els.artworkTraceThresholdControl ? Number(els.artworkTraceThresholdControl.value) : previous.artworkTraceDetail || 38,
     traceThickness: els.traceThicknessControl ? Number(els.traceThicknessControl.value) : previous.traceThickness || 1.2,
@@ -959,6 +962,9 @@ function setupOverlay() {
 
   if (els.autoAlignOverlayButton) {
     els.autoAlignOverlayButton.addEventListener("click", autoAlignOverlayFromTraces);
+  }
+  if (els.alignmentMethodSelect) {
+    els.alignmentMethodSelect.addEventListener("change", saveUiPrefs);
   }
 
   els.resetOverlayButton.addEventListener("click", () => {
@@ -2613,6 +2619,7 @@ function autoAlignOverlayFromTraces() {
 function findTraceAlignment() {
   const referenceMask = traceMaskFromImage(els.referenceLayer, 220);
   const artworkMask = traceMaskFromImage(els.artworkBaseLayer, 220);
+  const alignmentMethod = normalizeAlignmentMethod(els.alignmentMethodSelect ? els.alignmentMethodSelect.value : "portrait");
   if (!referenceMask || !artworkMask || referenceMask.points.length < 24 || artworkMask.points.length < 24) return null;
   const referenceBounds = pointBounds(referenceMask.points);
   const artworkBounds = pointBounds(artworkMask.points);
@@ -2631,13 +2638,13 @@ function findTraceAlignment() {
   let best = null;
   centerSeeds.forEach((center) => {
     baseScales.forEach((scale) => {
-      const coarse = searchTraceAlignment(referenceMask, artworkMask, scale, center.x, center.y, [-12, -6, 0, 6, 12], [0.86, 0.94, 1, 1.08, 1.2, 1.38], 10, 5);
+      const coarse = searchTraceAlignment(referenceMask, artworkMask, scale, center.x, center.y, [-12, -6, 0, 6, 12], [0.86, 0.94, 1, 1.08, 1.2, 1.38], 10, 5, 0, alignmentMethod);
       if (!best || (coarse && coarse.score > best.score)) best = coarse;
     });
   });
   if (!best) return null;
-  best = searchTraceAlignment(referenceMask, artworkMask, best.scale, best.centerX, best.centerY, [-4, 0, 4], [0.96, 1, 1.04, 1.1], 3, 4, best.rotate) || best;
-  best = searchTraceAlignment(referenceMask, artworkMask, best.scale, best.centerX, best.centerY, [-1, 0, 1], [0.99, 1, 1.02], 1, 3, best.rotate) || best;
+  best = searchTraceAlignment(referenceMask, artworkMask, best.scale, best.centerX, best.centerY, [-4, 0, 4], [0.96, 1, 1.04, 1.1], 3, 4, best.rotate, alignmentMethod) || best;
+  best = searchTraceAlignment(referenceMask, artworkMask, best.scale, best.centerX, best.centerY, [-1, 0, 1], [0.99, 1, 1.02], 1, 3, best.rotate, alignmentMethod) || best;
   const stageSize = overlayStageSize();
   if (stageSize.width < 80 || stageSize.height < 80) return null;
   const baseRect = artworkDisplayRect(stageSize.width, stageSize.height);
@@ -2782,6 +2789,10 @@ function analysisModeLabel(value) {
 
 function normalizeCompareView(value) {
   return value === "side-by-side" ? "side-by-side" : "overlay";
+}
+
+function normalizeAlignmentMethod(value) {
+  return value === "trace" ? "trace" : "portrait";
 }
 
 function normalizeStudyMode(value) {
@@ -3604,7 +3615,7 @@ function distanceField(points, width, height) {
   return distances;
 }
 
-function searchTraceAlignment(referenceMask, artworkMask, baseScale, baseCenterX, baseCenterY, rotations, scaleMultipliers, shiftStep, shiftRadius, baseRotate = 0) {
+function searchTraceAlignment(referenceMask, artworkMask, baseScale, baseCenterX, baseCenterY, rotations, scaleMultipliers, shiftStep, shiftRadius, baseRotate = 0, method = "portrait") {
   let best = null;
   rotations.forEach((rotateOffset) => {
     const rotate = baseRotate + rotateOffset;
@@ -3614,7 +3625,7 @@ function searchTraceAlignment(referenceMask, artworkMask, baseScale, baseCenterX
         for (let dx = -shiftRadius; dx <= shiftRadius; dx += 1) {
           const centerX = baseCenterX + dx * shiftStep;
           const centerY = baseCenterY + dy * shiftStep;
-          const score = scoreTraceAlignment(referenceMask, artworkMask, scale, centerX, centerY, rotate);
+          const score = scoreTraceAlignment(referenceMask, artworkMask, scale, centerX, centerY, rotate, method);
           if (!best || score > best.score) best = { score, scale, centerX, centerY, rotate };
         }
       }
@@ -3623,7 +3634,7 @@ function searchTraceAlignment(referenceMask, artworkMask, baseScale, baseCenterX
   return best;
 }
 
-function scoreTraceAlignment(referenceMask, artworkMask, scale, centerX, centerY, rotate) {
+function scoreTraceAlignment(referenceMask, artworkMask, scale, centerX, centerY, rotate, method = "portrait") {
   const radians = (rotate * Math.PI) / 180;
   const cos = Math.cos(radians);
   const sin = Math.sin(radians);
@@ -3642,7 +3653,7 @@ function scoreTraceAlignment(referenceMask, artworkMask, scale, centerX, centerY
   let maxY = -Infinity;
   for (let index = 0; index < referencePoints.length; index += sampleStep) {
     const point = referencePoints[index];
-    const weight = portraitFeatureWeight(point, referenceMask.bounds);
+    const weight = method === "portrait" ? portraitFeatureWeight(point, referenceMask.bounds) : 1;
     sampleWeightTotal += weight;
     const scaledX = (point.x - referenceMask.anchor.x) * scale;
     const scaledY = (point.y - referenceMask.anchor.y) * scale;
