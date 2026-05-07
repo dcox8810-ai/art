@@ -2585,8 +2585,8 @@ function autoAlignOverlayFromTraces() {
 }
 
 function findTraceAlignment() {
-  const referenceMask = traceMaskFromImage(els.referenceLayer, 180, Number(els.traceThresholdControl ? els.traceThresholdControl.value : 38));
-  const artworkMask = traceMaskFromImage(els.artworkBaseLayer, 180, Number(els.artworkTraceThresholdControl ? els.artworkTraceThresholdControl.value : 38));
+  const referenceMask = traceMaskFromImage(els.referenceLayer, 180);
+  const artworkMask = traceMaskFromImage(els.artworkBaseLayer, 180);
   if (!referenceMask || !artworkMask || referenceMask.points.length < 24 || artworkMask.points.length < 24) return null;
   const referenceBounds = pointBounds(referenceMask.points);
   const artworkBounds = pointBounds(artworkMask.points);
@@ -2600,7 +2600,7 @@ function findTraceAlignment() {
   const stageSize = overlayStageSize();
   const baseRect = artworkDisplayRect(stageSize.width, stageSize.height);
   if (!baseRect) return null;
-  const refToArtScale = best.scale * (artworkMask.scale / referenceMask.scale);
+  const refToArtScale = best.scale * (referenceMask.scale / artworkMask.scale);
   const refXInArtPixels = best.x / artworkMask.scale;
   const refYInArtPixels = best.y / artworkMask.scale;
   const artDisplayScale = baseRect.width / els.artworkBaseLayer.naturalWidth;
@@ -2608,14 +2608,17 @@ function findTraceAlignment() {
   const height = els.referenceLayer.naturalHeight * refToArtScale * artDisplayScale;
   const centerX = baseRect.x + (refXInArtPixels + (els.referenceLayer.naturalWidth * refToArtScale) / 2) * artDisplayScale;
   const centerY = baseRect.y + (refYInArtPixels + (els.referenceLayer.naturalHeight * refToArtScale) / 2) * artDisplayScale;
-  return sanitizeOverlay({
+  return {
+    ...sanitizeOverlay({
     ...state.overlay,
     x: centerX - stageSize.width / 2,
     y: centerY - stageSize.height / 2,
     width,
     height,
     rotate: best.rotate,
-  });
+    }),
+    score: best.score,
+  };
 }
 
 function currentOverlayCompareImage() {
@@ -3370,8 +3373,8 @@ function traceMaskFromImage(source, maxSide, threshold) {
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   ctx.drawImage(source, 0, 0, width, height);
   const data = ctx.getImageData(0, 0, width, height).data;
-  const points = [];
   const step = Math.max(1, Math.round(Math.max(width, height) / 180));
+  const edgeSamples = [];
   for (let y = 1; y < height - 1; y += step) {
     for (let x = 1; x < width - 1; x += step) {
       const center = grayAt(data, width, x, y);
@@ -3379,10 +3382,21 @@ function traceMaskFromImage(source, maxSide, threshold) {
       const down = grayAt(data, width, x, y + 1);
       const diag = grayAt(data, width, x + 1, y + 1);
       const edge = Math.abs(center - right) + Math.abs(center - down) + Math.abs(center - diag) * 0.5;
-      if (edge > threshold) points.push({ x, y });
+      edgeSamples.push({ x, y, edge });
     }
   }
+  const resolvedThreshold = Number.isFinite(Number(threshold)) ? Number(threshold) : adaptiveEdgeThreshold(edgeSamples);
+  const points = edgeSamples
+    .filter((sample) => sample.edge > resolvedThreshold)
+    .map((sample) => ({ x: sample.x, y: sample.y }));
   return { width, height, scale, points, set: pointSet(points) };
+}
+
+function adaptiveEdgeThreshold(edgeSamples) {
+  if (!edgeSamples.length) return 38;
+  const edges = edgeSamples.map((sample) => sample.edge).sort((a, b) => a - b);
+  const index = clamp(Math.floor(edges.length * 0.82), 0, edges.length - 1);
+  return Math.max(18, Math.min(90, edges[index]));
 }
 
 function pointSet(points) {
