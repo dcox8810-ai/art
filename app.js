@@ -171,7 +171,9 @@ function bindElements() {
     toggleOverlayFullscreenButton: document.querySelector("#toggleOverlayFullscreenButton"),
     exitOverlayFullscreenButton: document.querySelector("#exitOverlayFullscreenButton"),
     exportOverlayButton: document.querySelector("#exportOverlayButton"),
+    exportOverlayToolbarButton: document.querySelector("#exportOverlayToolbarButton"),
     toggleOpacityPlaybackButton: document.querySelector("#toggleOpacityPlaybackButton"),
+    toggleOpacityPlaybackFullscreenButton: document.querySelector("#toggleOpacityPlaybackFullscreenButton"),
     exportOverlayFullscreenButton: document.querySelector("#exportOverlayFullscreenButton"),
     overlayNudge: document.querySelector(".overlay-nudge"),
     undoOverlayButton: document.querySelector("#undoOverlayButton"),
@@ -201,6 +203,7 @@ function bindElements() {
     overlayLockToggle: document.querySelector("#overlayLockToggle"),
     traceColorInputs: document.querySelectorAll("input[name='traceColor']"),
     overlayOpacityInputs: document.querySelectorAll("input[name='overlayOpacity']"),
+    fullscreenOpacityButtons: document.querySelectorAll("[data-fullscreen-opacity]"),
     overlayOpacityField: document.querySelector(".opacity-field"),
     traceColorField: document.querySelector(".trace-color-field"),
     overlayActionsRow: document.querySelector(".overlay-actions-row"),
@@ -757,7 +760,9 @@ function setupOverlay() {
     if (document.querySelector("#view-overlay").classList.contains("overlay-fullscreen")) toggleOverlayFullscreen();
   });
   els.exportOverlayButton.addEventListener("click", exportOverlayImage);
+  if (els.exportOverlayToolbarButton) els.exportOverlayToolbarButton.addEventListener("click", exportOverlayImage);
   if (els.toggleOpacityPlaybackButton) els.toggleOpacityPlaybackButton.addEventListener("click", toggleOpacityPlayback);
+  if (els.toggleOpacityPlaybackFullscreenButton) els.toggleOpacityPlaybackFullscreenButton.addEventListener("click", toggleOpacityPlayback);
   els.exportOverlayFullscreenButton.addEventListener("click", exportOverlayImage);
   els.undoOverlayButton.addEventListener("click", undoOverlay);
   if (els.redoOverlayButton) els.redoOverlayButton.addEventListener("click", redoOverlay);
@@ -849,6 +854,11 @@ function setupOverlay() {
   toArray(els.overlayOpacityInputs).forEach((input) => {
     input.addEventListener("change", () => {
       setOverlayOpacity(Number(input.value));
+    });
+  });
+  toArray(els.fullscreenOpacityButtons).forEach((button) => {
+    button.addEventListener("click", () => {
+      setOverlayOpacity(Number(button.dataset.fullscreenOpacity));
     });
   });
 
@@ -1244,6 +1254,10 @@ function startOpacityPlayback() {
     els.toggleOpacityPlaybackButton.textContent = "Ⅱ";
     els.toggleOpacityPlaybackButton.setAttribute("aria-label", "Pause opacity cycle");
   }
+  if (els.toggleOpacityPlaybackFullscreenButton) {
+    els.toggleOpacityPlaybackFullscreenButton.textContent = "Ⅱ";
+    els.toggleOpacityPlaybackFullscreenButton.setAttribute("aria-label", "Pause opacity cycle");
+  }
 }
 
 function stopOpacityPlayback() {
@@ -1254,6 +1268,10 @@ function stopOpacityPlayback() {
   if (els.toggleOpacityPlaybackButton) {
     els.toggleOpacityPlaybackButton.textContent = "▶";
     els.toggleOpacityPlaybackButton.setAttribute("aria-label", "Play opacity cycle");
+  }
+  if (els.toggleOpacityPlaybackFullscreenButton) {
+    els.toggleOpacityPlaybackFullscreenButton.textContent = "▶";
+    els.toggleOpacityPlaybackFullscreenButton.setAttribute("aria-label", "Play opacity cycle");
   }
 }
 
@@ -2264,6 +2282,9 @@ function syncOverlayControls() {
   toArray(els.overlayOpacityInputs).forEach((input) => {
     input.checked = Number(input.value) === state.overlay.opacity;
   });
+  toArray(els.fullscreenOpacityButtons || []).forEach((button) => {
+    button.classList.toggle("active", Number(button.dataset.fullscreenOpacity) === Number(state.overlay.opacity));
+  });
   syncTraceColorControls();
   if (els.undoOverlayButton) els.undoOverlayButton.disabled = !state.overlayHistory.length;
   if (els.redoOverlayButton) els.redoOverlayButton.disabled = !state.overlayRedoHistory.length;
@@ -2599,8 +2620,6 @@ function renderReferenceTrace() {
   renderAnalysisToCanvas(els.referenceLayer, els.traceCanvas, {
     mode: "trace",
     transparentTrace: true,
-    fixedWidth: 420,
-    fixedHeight: 525,
   });
 }
 
@@ -3162,7 +3181,7 @@ function drawOverlayExport(ctx, stageSize, opacity = state.overlay.opacity) {
     height: state.overlay.height,
   };
   if (els.traceToggle.checked) {
-    ctx.drawImage(els.traceCanvas, frame.x, frame.y, frame.width, frame.height);
+    drawContainedImage(ctx, els.traceCanvas, frame);
   } else {
     drawContainedImage(ctx, els.tracePhotoLayer, { x: frame.x, y: frame.y, width: frame.width, height: frame.height });
   }

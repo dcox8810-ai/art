@@ -1388,13 +1388,13 @@ html[data-theme="light"] .stat-hero {
 
 .overlay-stage-toolbar {
   position: absolute;
-  top: 10px;
-  left: 10px;
-  right: 10px;
+  top: 8px;
+  left: 8px;
+  right: 8px;
   z-index: 5;
   display: flex;
   flex-wrap: nowrap;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
   overflow-x: auto;
   scrollbar-width: none;
@@ -1417,25 +1417,65 @@ html[data-theme="light"] .stat-hero {
 .overlay-lock-inline {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
   margin: 0;
-  padding: 8px 10px;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 8px;
   background: rgba(19, 26, 39, 0.92);
   color: var(--ink);
   backdrop-filter: blur(10px);
-  white-space: nowrap;
 }
 
 .overlay-stage-toolbar .secondary.compact {
-  padding-right: 10px;
-  padding-left: 10px;
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  padding: 0;
   white-space: nowrap;
 }
 
 .overlay-lock-inline input {
-  width: auto;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.lock-icon {
+  position: relative;
+  width: 18px;
+  height: 15px;
+  border: 2px solid currentColor;
+  border-radius: 4px;
+}
+
+.lock-icon::before {
+  content: "";
+  position: absolute;
+  top: -11px;
+  left: 7px;
+  width: 12px;
+  height: 11px;
+  border: 2px solid currentColor;
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  transform: rotate(22deg);
+  transform-origin: bottom left;
+}
+
+.overlay-lock-inline:has(input:checked) {
+  border-color: var(--teal);
+  background: rgba(61, 169, 165, 0.18);
+  color: var(--teal);
+}
+
+.overlay-lock-inline:has(input:checked) .lock-icon::before {
+  left: 2px;
+  transform: none;
 }
 
 .overlay-locked .compare-frame {
@@ -1609,7 +1649,8 @@ body.reference-fullscreen-active .view:not(#view-overlay) {
 
 #view-overlay.overlay-fullscreen .overlay-picker,
 #view-overlay.overlay-fullscreen .controls,
-#view-overlay.overlay-fullscreen .analysis-compare {
+#view-overlay.overlay-fullscreen .analysis-compare,
+#view-overlay.overlay-fullscreen .study-switch {
   display: none;
 }
 
@@ -1716,9 +1757,15 @@ body.reference-fullscreen-active .view:not(#view-overlay) {
 
 #view-overlay.overlay-fullscreen .overlay-stage-toolbar {
   top: max(10px, env(safe-area-inset-top));
-  right: calc(max(10px, env(safe-area-inset-right)) + 96px);
+  right: calc(max(10px, env(safe-area-inset-right)) + 146px);
   left: max(10px, env(safe-area-inset-left));
   z-index: 8;
+}
+
+#view-overlay.overlay-fullscreen #toggleOpacityPlaybackButton,
+#view-overlay.overlay-fullscreen #exportOverlayToolbarButton,
+#view-overlay.overlay-fullscreen #toggleOverlayFullscreenButton {
+  display: none;
 }
 
 #view-overlay.overlay-fullscreen .color-field,
@@ -1737,6 +1784,10 @@ body.reference-fullscreen-active .view:not(#view-overlay) {
 }
 
 .fullscreen-actions {
+  display: none;
+}
+
+.fullscreen-opacity {
   display: none;
 }
 
@@ -1762,6 +1813,37 @@ body.reference-fullscreen-active .view:not(#view-overlay) {
   font-size: 1.2rem;
   font-weight: 900;
   backdrop-filter: blur(10px);
+}
+
+#view-overlay.overlay-fullscreen .fullscreen-opacity {
+  position: fixed;
+  right: max(10px, env(safe-area-inset-right));
+  bottom: max(58px, calc(58px + env(safe-area-inset-bottom)));
+  left: max(10px, env(safe-area-inset-left));
+  z-index: 8;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  background: rgba(16, 19, 25, 0.62);
+  backdrop-filter: blur(12px);
+}
+
+.fullscreen-opacity button {
+  min-height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 7px;
+  background: rgba(19, 26, 39, 0.72);
+  color: white;
+  font-weight: 900;
+}
+
+.fullscreen-opacity button.active {
+  border-color: var(--teal);
+  background: rgba(61, 169, 165, 0.18);
+  color: var(--teal);
 }
 
 .overlay-nudge {
@@ -1940,6 +2022,7 @@ body.reference-fullscreen-active .view:not(#view-overlay) {
 #traceCanvas {
   background: transparent;
   mix-blend-mode: normal;
+  object-fit: contain;
 }
 
 #tracePhotoLayer {
