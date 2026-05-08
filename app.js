@@ -188,6 +188,7 @@ function bindElements() {
     undoOverlayButton: document.querySelector("#undoOverlayButton"),
     redoOverlayButton: document.querySelector("#redoOverlayButton"),
     autoAlignOverlayButton: document.querySelector("#autoAlignOverlayButton"),
+    autoAlignOverlayToolbarButton: document.querySelector("#autoAlignOverlayToolbarButton"),
     resetOverlayButton: document.querySelector("#resetOverlayButton"),
     traceToggle: document.querySelector("#traceToggle"),
     artworkTraceToggle: document.querySelector("#artworkTraceToggle"),
@@ -403,13 +404,24 @@ function saveData(options = {}) {
   const { quiet = false } = options;
   state.dataRevision += 1;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.artworks));
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(createQuickCacheArtworks(state.artworks)));
   } catch (error) {
-    if (!quiet) setAppStatus("Saved to browser database. Local quick cache is full.");
+    localStorage.removeItem(STORAGE_KEY);
   }
   saveArtworksToIndexedDb(state.artworks).catch(() => {
     if (!quiet) setAppStatus("Could not save to browser database. Please export a backup.");
   });
+}
+
+function createQuickCacheArtworks(artworks) {
+  return artworks.map((artwork) => ({
+    ...artwork,
+    images: (artwork.images || []).map((image) => ({
+      ...image,
+      dataUrl: "",
+    })),
+  }));
 }
 
 function setupTabs() {
@@ -800,6 +812,7 @@ function setupOverlay() {
   });
   els.exportOverlayButton.addEventListener("click", exportOverlayImage);
   if (els.exportOverlayToolbarButton) els.exportOverlayToolbarButton.addEventListener("click", exportOverlayImage);
+  if (els.autoAlignOverlayToolbarButton) els.autoAlignOverlayToolbarButton.addEventListener("click", autoAlignOverlayFromTraces);
   if (els.toggleOpacityPlaybackButton) els.toggleOpacityPlaybackButton.addEventListener("click", toggleOpacityPlayback);
   if (els.toggleOpacityPlaybackFullscreenButton) els.toggleOpacityPlaybackFullscreenButton.addEventListener("click", toggleOpacityPlayback);
   els.exportOverlayFullscreenButton.addEventListener("click", exportOverlayImage);
@@ -2480,6 +2493,7 @@ function setOverlayOpacity(value, options = {}) {
   if (state.overlay.opacity !== next && history) clearOverlayRedoHistory();
   state.overlay.opacity = next;
   syncOverlayControls();
+  state.overlay.baseSpace = null;
   applyOverlayTransform();
   if (save) saveCurrentOverlayPosition();
 }
@@ -2535,6 +2549,7 @@ function settleDefaultOverlayPosition() {
       width: alignment.width,
       height: alignment.height,
       rotate: alignment.rotate,
+      baseSpace: null,
     });
     setAppStatus(`Auto aligned traces (${Math.round(alignment.score)} match score).`);
   } else {
@@ -2650,6 +2665,8 @@ function autoAlignOverlayFromTraces() {
   state.overlay.width = alignment.width;
   state.overlay.height = alignment.height;
   state.overlay.rotate = alignment.rotate;
+  state.overlay.baseSpace = null;
+  state.overlayLayoutBaseSpace = null;
   syncOverlayControls();
   clampOverlayToStage();
   applyOverlayTransform();
@@ -2879,7 +2896,8 @@ function syncAnalysisControls() {
   if (els.traceToggle) {
     const label = els.traceToggle.closest("label");
     if (label) {
-      label.lastChild.textContent = " Show trace lines";
+      const text = label.querySelector("span");
+      if (text) text.textContent = "Ref trace";
     }
   }
 }

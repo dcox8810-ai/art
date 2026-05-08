@@ -2360,8 +2360,49 @@ body.reference-fullscreen-active .view:not(#view-overlay) {
 
 .overlay-actions-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
+}
+
+.overlay-visibility-field {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.overlay-visibility-field legend {
+  margin-bottom: 6px;
+}
+
+.overlay-visibility-toggle {
+  position: relative;
+  min-height: 44px;
+  margin: 0;
+  padding: 8px 6px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(19, 26, 39, 0.65);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.overlay-visibility-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.overlay-visibility-toggle:has(input:checked) {
+  border-color: var(--teal);
+  background: rgba(61, 169, 165, 0.18);
+  color: var(--teal);
 }
 
 .boot-error {

@@ -10,7 +10,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon-180.png" />
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=45" />
+    <link rel="stylesheet" href="styles.css?v=46" />
   </head>
   <body>
     <main class="app-shell">
@@ -449,6 +449,7 @@
             <label class="toggle-row overlay-lock-inline" aria-label="Lock overlay"><input id="overlayLockToggle" type="checkbox" /><span class="lock-icon" aria-hidden="true"></span></label>
             <button class="secondary compact icon-compact" type="button" id="undoOverlayButton" aria-label="Undo overlay adjustment">↩</button>
             <button class="secondary compact icon-compact" type="button" id="redoOverlayButton" aria-label="Redo overlay adjustment">↪</button>
+            <button class="secondary compact icon-compact" type="button" id="autoAlignOverlayToolbarButton" aria-label="Auto align traces">⌖</button>
             <button class="secondary compact icon-compact" type="button" id="toggleOpacityPlaybackButton" aria-label="Play opacity cycle">▶</button>
             <button class="secondary compact icon-compact" type="button" id="exportOverlayToolbarButton" aria-label="Export overlay image">↓</button>
             <button class="secondary compact icon-compact" type="button" id="toggleOverlayFullscreenButton" aria-label="Full screen overlay">⛶</button>
@@ -508,9 +509,12 @@
         </div>
 
         <div class="panel controls">
-          <label class="toggle-row overlay-trace-toggle"><input id="traceToggle" type="checkbox" checked /> Show trace lines</label>
-          <label class="toggle-row artwork-trace-toggle"><input id="artworkTraceToggle" type="checkbox" /> Show artwork trace</label>
-          <label class="toggle-row artwork-photo-toggle"><input id="artworkPhotoToggle" type="checkbox" checked /> Show artwork image</label>
+          <fieldset class="overlay-visibility-field">
+            <legend>Visibility</legend>
+            <label class="overlay-visibility-toggle overlay-trace-toggle"><input id="traceToggle" type="checkbox" checked /><span>Ref trace</span></label>
+            <label class="overlay-visibility-toggle artwork-trace-toggle"><input id="artworkTraceToggle" type="checkbox" /><span>Art trace</span></label>
+            <label class="overlay-visibility-toggle artwork-photo-toggle"><input id="artworkPhotoToggle" type="checkbox" checked /><span>Artwork</span></label>
+          </fieldset>
           <div class="analysis-grid">
             <label id="analysisModeWrap">
               Analysis mode
@@ -572,7 +576,6 @@
             </select>
           </label>
           <div class="overlay-actions-row">
-            <button class="secondary" type="button" id="autoAlignOverlayButton">Auto align traces</button>
             <button class="secondary" type="button" id="resetOverlayButton">Reset overlay</button>
           </div>
         </div>
@@ -626,7 +629,7 @@
       </article>
     </template>
 
-    <script src="app.js?v=45"></script>
+    <script src="app.js?v=46"></script>
     <script>
       if ("serviceWorker" in navigator && location.protocol !== "file:") {
         navigator.serviceWorker.register("service-worker.js");
