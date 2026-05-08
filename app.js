@@ -29,6 +29,8 @@ const state = {
   opacityPlaybackTimer: null,
   opacityPlaybackIndex: 0,
   dataRevision: 0,
+  storageHydrating: false,
+  pendingSaveAfterHydration: false,
   overlayStageZoom: { scale: 1, x: 0, y: 0 },
   referenceZoom: { scale: 1, x: 0, y: 0 },
   referenceFullscreen: false,
@@ -239,18 +241,63 @@ function bindElements() {
 }
 
 function loadData() {
-  let saved = null;
-  try {
-    saved = localStorage.getItem(STORAGE_KEY);
-    state.artworks = normalizeArtworks(saved ? JSON.parse(saved) : seedArtworks());
-  } catch (error) {
-    state.artworks = seedArtworks();
-    saved = null;
-  }
+  const localArtworks = readLocalStorageArtworks();
+  const localFallback = artworksContainImageData(localArtworks) ? localArtworks : null;
+  state.artworks = normalizeArtworks(localFallback || seedArtworks());
+  state.storageHydrating = true;
+  state.pendingSaveAfterHydration = false;
   state.uploadStages = defaultUploadStages();
   state.draftSessions = [];
   loadUiPrefs();
-  restoreDataFromIndexedDb(Boolean(saved), state.dataRevision);
+  restoreDataFromIndexedDb(localFallback, state.dataRevision);
+}
+
+function readLocalStorageArtworks() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    const parsed = saved ? JSON.parse(saved) : null;
+    return Array.isArray(parsed) ? parsed : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function artworksContainImageData(artworks) {
+  return Array.isArray(artworks) && artworks.some((artwork) => (
+    Array.isArray(artwork.images) && artwork.images.some((image) => isImageDataUrl(image.dataUrl))
+  ));
+}
+
+function isImageDataUrl(value) {
+  return typeof value === "string" && value.startsWith("data:image/");
+}
+
+function clearProjectLocalCache() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (error) {
+    // Ignore localStorage cleanup failures; IndexedDB is the authoritative store.
+  }
+}
+
+function mergeMissingImageData(artworks, fallbackArtworks) {
+  if (!Array.isArray(artworks) || !Array.isArray(fallbackArtworks)) return artworks;
+  const fallbackById = new Map(fallbackArtworks.map((artwork) => [artwork.id, artwork]));
+  return artworks.map((artwork) => {
+    const fallbackArtwork = fallbackById.get(artwork.id);
+    if (!fallbackArtwork || !Array.isArray(artwork.images) || !Array.isArray(fallbackArtwork.images)) return artwork;
+    const fallbackImages = new Map(fallbackArtwork.images.map((image) => [image.name, image]));
+    return {
+      ...artwork,
+      images: artwork.images.map((image) => {
+        if (isImageDataUrl(image.dataUrl)) return image;
+        const fallbackImage = fallbackImages.get(image.name);
+        return fallbackImage && isImageDataUrl(fallbackImage.dataUrl)
+          ? { ...image, dataUrl: fallbackImage.dataUrl }
+          : image;
+      }),
+    };
+  });
 }
 
 function loadUiPrefs() {
@@ -339,19 +386,41 @@ function readUiPrefs() {
   return saved ? JSON.parse(saved) : {};
 }
 
-async function restoreDataFromIndexedDb(hadLocalData, revision) {
+async function restoreDataFromIndexedDb(localFallback, revision) {
   try {
     const stored = await readArtworksFromIndexedDb();
     if (state.dataRevision !== revision) return;
+    let shouldSaveRestoredData = false;
     if (Array.isArray(stored)) {
-      state.artworks = normalizeArtworks(stored);
+      state.artworks = normalizeArtworks(mergeMissingImageData(stored, localFallback));
+      shouldSaveRestoredData = Array.isArray(localFallback);
+      if (finishStorageHydration()) shouldSaveRestoredData = true;
       renderAll();
+      clearProjectLocalCache();
+      if (shouldSaveRestoredData) saveData({ quiet: true });
       return;
     }
-    if (!hadLocalData) saveData();
+    if (Array.isArray(localFallback)) {
+      state.artworks = normalizeArtworks(localFallback);
+    }
+    if (finishStorageHydration()) shouldSaveRestoredData = true;
+    renderAll();
+    if (shouldSaveRestoredData || Array.isArray(localFallback) || !stored) saveData({ quiet: true });
   } catch (error) {
-    if (!hadLocalData) saveData();
+    if (Array.isArray(localFallback)) {
+      state.artworks = normalizeArtworks(localFallback);
+    }
+    const shouldSaveRestoredData = finishStorageHydration();
+    renderAll();
+    if (shouldSaveRestoredData || !localFallback) saveData({ quiet: true });
   }
+}
+
+function finishStorageHydration() {
+  const shouldSave = state.pendingSaveAfterHydration;
+  state.storageHydrating = false;
+  state.pendingSaveAfterHydration = false;
+  return shouldSave;
 }
 
 function openStudioDb() {
@@ -402,26 +471,17 @@ async function saveArtworksToIndexedDb(artworks) {
 
 function saveData(options = {}) {
   const { quiet = false } = options;
-  state.dataRevision += 1;
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(createQuickCacheArtworks(state.artworks)));
-  } catch (error) {
-    localStorage.removeItem(STORAGE_KEY);
+  if (state.storageHydrating) {
+    state.pendingSaveAfterHydration = true;
+    return;
   }
-  saveArtworksToIndexedDb(state.artworks).catch(() => {
-    if (!quiet) setAppStatus("Could not save to browser database. Please export a backup.");
-  });
-}
-
-function createQuickCacheArtworks(artworks) {
-  return artworks.map((artwork) => ({
-    ...artwork,
-    images: (artwork.images || []).map((image) => ({
-      ...image,
-      dataUrl: "",
-    })),
-  }));
+  state.dataRevision += 1;
+  clearProjectLocalCache();
+  saveArtworksToIndexedDb(state.artworks)
+    .then(clearProjectLocalCache)
+    .catch(() => {
+      if (!quiet) setAppStatus("Could not save to browser database. Please export a backup.");
+    });
 }
 
 function setupTabs() {
@@ -2696,13 +2756,15 @@ function findTraceAlignment() {
   let best = null;
   centerSeeds.forEach((center) => {
     baseScales.forEach((scale) => {
-      const coarse = searchTraceAlignment(referenceMask, artworkMask, scale, center.x, center.y, [-12, -6, 0, 6, 12], [0.86, 0.94, 1, 1.08, 1.2, 1.38], 10, 5, 0, alignmentMethod);
-      if (!best || (coarse && coarse.score > best.score)) best = coarse;
+      const coarse = searchTraceAlignment(referenceMask, artworkMask, scale, center.x, center.y, [0, -6, 6, -12, 12], [0.86, 0.94, 1, 1.08, 1.2, 1.38], 10, 5, 0, alignmentMethod);
+      if (isBetterAlignmentCandidate(coarse, best, alignmentMethod)) best = coarse;
     });
   });
   if (!best) return null;
-  best = searchTraceAlignment(referenceMask, artworkMask, best.scale, best.centerX, best.centerY, [-4, 0, 4], [0.96, 1, 1.04, 1.1], 3, 4, best.rotate, alignmentMethod) || best;
-  best = searchTraceAlignment(referenceMask, artworkMask, best.scale, best.centerX, best.centerY, [-1, 0, 1], [0.99, 1, 1.02], 1, 3, best.rotate, alignmentMethod) || best;
+  const medium = searchTraceAlignment(referenceMask, artworkMask, best.scale, best.centerX, best.centerY, [0, -4, 4], [0.96, 1, 1.04, 1.1], 3, 4, best.rotate, alignmentMethod);
+  if (isBetterAlignmentCandidate(medium, best, alignmentMethod)) best = medium;
+  const fine = searchTraceAlignment(referenceMask, artworkMask, best.scale, best.centerX, best.centerY, [0, -1, 1], [0.99, 1, 1.02], 1, 3, best.rotate, alignmentMethod);
+  if (isBetterAlignmentCandidate(fine, best, alignmentMethod)) best = fine;
   const stageSize = overlayStageSize();
   if (stageSize.width < 80 || stageSize.height < 80) return null;
   const baseRect = artworkDisplayRect(stageSize.width, stageSize.height);
@@ -3479,20 +3541,16 @@ function traceMaskFromImage(source, maxSide, threshold) {
   const scale = Math.min(1, maxSide / Math.max(source.naturalWidth, source.naturalHeight));
   const width = Math.max(1, Math.round(source.naturalWidth * scale));
   const height = Math.max(1, Math.round(source.naturalHeight * scale));
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(source, 0, 0, width, height);
-  const data = ctx.getImageData(0, 0, width, height).data;
+  const data = downsampleImageToGrayscale(source, width, height);
+  if (!data) return null;
   const step = Math.max(1, Math.round(Math.max(width, height) / 180));
   const edgeSamples = [];
   for (let y = 1; y < height - 1; y += step) {
     for (let x = 1; x < width - 1; x += step) {
-      const center = grayAt(data, width, x, y);
-      const right = grayAt(data, width, x + 1, y);
-      const down = grayAt(data, width, x, y + 1);
-      const diag = grayAt(data, width, x + 1, y + 1);
+      const center = grayMaskAt(data, width, x, y);
+      const right = grayMaskAt(data, width, x + 1, y);
+      const down = grayMaskAt(data, width, x, y + 1);
+      const diag = grayMaskAt(data, width, x + 1, y + 1);
       const edge = Math.abs(center - right) + Math.abs(center - down) + Math.abs(center - diag) * 0.5;
       edgeSamples.push({ x, y, edge });
     }
@@ -3504,6 +3562,56 @@ function traceMaskFromImage(source, maxSide, threshold) {
   const filteredPoints = filterSubjectPoints(points, width, height);
   const bounds = pointBounds(filteredPoints);
   return { width, height, scale, points: filteredPoints, set: pointSet(filteredPoints), distance: distanceField(filteredPoints, width, height), bounds, anchor: { x: bounds.cx, y: bounds.cy } };
+}
+
+function downsampleImageToGrayscale(source, width, height) {
+  const sourceWidth = source.naturalWidth;
+  const sourceHeight = source.naturalHeight;
+  if (!sourceWidth || !sourceHeight || !width || !height) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = sourceWidth;
+  canvas.height = sourceHeight;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(source, 0, 0);
+  const sourceData = ctx.getImageData(0, 0, sourceWidth, sourceHeight).data;
+  const output = new Uint8ClampedArray(width * height);
+  const ratioX = sourceWidth / width;
+  const ratioY = sourceHeight / height;
+  const samplesX = downsampleSampleCount(ratioX);
+  const samplesY = downsampleSampleCount(ratioY);
+
+  for (let y = 0; y < height; y += 1) {
+    const sourceYStart = y * ratioY;
+    for (let x = 0; x < width; x += 1) {
+      const sourceXStart = x * ratioX;
+      let total = 0;
+      let count = 0;
+      for (let sampleY = 0; sampleY < samplesY; sampleY += 1) {
+        const sourceY = clamp(Math.floor(sourceYStart + ((sampleY + 0.5) * ratioY) / samplesY), 0, sourceHeight - 1);
+        for (let sampleX = 0; sampleX < samplesX; sampleX += 1) {
+          const sourceX = clamp(Math.floor(sourceXStart + ((sampleX + 0.5) * ratioX) / samplesX), 0, sourceWidth - 1);
+          const index = (sourceY * sourceWidth + sourceX) * 4;
+          total += luma(sourceData[index], sourceData[index + 1], sourceData[index + 2]);
+          count += 1;
+        }
+      }
+      output[y * width + x] = Math.round((total / count) / 4) * 4;
+    }
+  }
+  canvas.width = 1;
+  canvas.height = 1;
+  return output;
+}
+
+function downsampleSampleCount(ratio) {
+  if (ratio >= 9) return 4;
+  if (ratio >= 4) return 3;
+  if (ratio >= 1.5) return 2;
+  return 1;
+}
+
+function grayMaskAt(data, width, x, y) {
+  return data[y * width + x];
 }
 
 function adaptiveEdgeThreshold(edgeSamples) {
@@ -3685,12 +3793,20 @@ function searchTraceAlignment(referenceMask, artworkMask, baseScale, baseCenterX
           const centerX = baseCenterX + dx * shiftStep;
           const centerY = baseCenterY + dy * shiftStep;
           const score = scoreTraceAlignment(referenceMask, artworkMask, scale, centerX, centerY, rotate, method);
-          if (!best || score > best.score) best = { score, scale, centerX, centerY, rotate };
+          const candidate = { score, scale, centerX, centerY, rotate };
+          if (isBetterAlignmentCandidate(candidate, best, method)) best = candidate;
         }
       }
     });
   });
   return best;
+}
+
+function isBetterAlignmentCandidate(candidate, best, method = "portrait") {
+  if (!candidate) return false;
+  if (!best) return true;
+  const epsilon = method === "trace" ? 1 : 0.5;
+  return candidate.score > best.score + epsilon;
 }
 
 function scoreTraceAlignment(referenceMask, artworkMask, scale, centerX, centerY, rotate, method = "portrait") {
@@ -3737,10 +3853,14 @@ function scoreTraceAlignment(referenceMask, artworkMask, scale, centerX, centerY
     cy: (minY + maxY) / 2,
   };
   const artworkBounds = artworkMask.bounds;
-  const widthPenalty = Math.abs(Math.log(transformedBounds.width / Math.max(1, artworkBounds.width))) * 28;
-  const heightPenalty = Math.abs(Math.log(transformedBounds.height / Math.max(1, artworkBounds.height))) * 28;
-  const centerPenalty = (Math.hypot(transformedBounds.cx - artworkBounds.cx, transformedBounds.cy - artworkBounds.cy) / Math.max(artworkWidth, artworkHeight)) * 32;
-  return (close / inBounds) * 130 + (inBounds / sampleWeightTotal) * 35 - averageDistance * 7 - widthPenalty - heightPenalty - centerPenalty;
+  const geometryWeight = method === "trace" ? 48 : 28;
+  const centerWeight = method === "trace" ? 58 : 32;
+  const rotationWeight = method === "trace" ? 0.85 : 0.25;
+  const widthPenalty = Math.abs(Math.log(transformedBounds.width / Math.max(1, artworkBounds.width))) * geometryWeight;
+  const heightPenalty = Math.abs(Math.log(transformedBounds.height / Math.max(1, artworkBounds.height))) * geometryWeight;
+  const centerPenalty = (Math.hypot(transformedBounds.cx - artworkBounds.cx, transformedBounds.cy - artworkBounds.cy) / Math.max(artworkWidth, artworkHeight)) * centerWeight;
+  const rotationPenalty = Math.abs(rotate) * rotationWeight;
+  return (close / inBounds) * 130 + (inBounds / sampleWeightTotal) * 35 - averageDistance * 7 - widthPenalty - heightPenalty - centerPenalty - rotationPenalty;
 }
 
 function portraitFeatureWeight(point, bounds) {
